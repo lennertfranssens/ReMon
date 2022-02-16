@@ -23,6 +23,8 @@ You will need:
 Building GHUMVEE is really easy. The `bootstrap.sh` script used to install the toolchain sets up the build/ directory using CMake, where GHUMVEE can be built by simply running `make`.
 This will build an optimized and statically linked version of the GHUMVEE binary.
 
+Go to /opt/repo when building GHUMVEE in the container. Execute the create\_build\_dir.sh script. This will setup the build environment in the build/ directory. Simply run `make` in the build/ folder to rebuild GHUMVEE.
+
 To more easily switch between build types and configurations, our CMakeLists.txt defines additional custom targets aimed at reconfiguring the build configuration. These can be executed by executing `make <desired configuration>` in the build/ directory. These targets are not all mutually exclusive. The targets are:
 - benchmark: Configures the Release build of GHUMVEE. This version is optimized and ideal for looking at performance. **Note**: this is essentially also a release build, thus will be built to the MVEE/bin/Release folder.
 - release: Configures the Release build of GHUMVEE. This version is optimized, but will leave some optional features enabled that make it less ideal for looking at performance, for example logging of system calls.
