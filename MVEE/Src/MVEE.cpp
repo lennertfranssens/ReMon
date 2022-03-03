@@ -1,7 +1,7 @@
 /*
  * GHent University Multi-Variant Execution Environment (GHUMVEE)
  *
- * This source file is distributed under the terms and conditions 
+ * This source file is distributed under the terms and conditions
  * found in GHUMVEELICENSE.txt.
  */
 
@@ -27,6 +27,8 @@
 #include <stdarg.h>
 #include <iostream>
 #include <ctype.h>
+#include <linux/filter.h>
+#include <linux/seccomp.h>
 #include "MVEE.h"
 #include "MVEE_monitor.h"
 #include "MVEE_memory.h"
@@ -40,64 +42,66 @@
     Static Member Initialization
 -----------------------------------------------------------------------------*/
 std::vector<
-	std::map<std::string,
-			 std::string>>             mvee::aliases;
+    std::map<std::string,
+             std::string>>
+    mvee::aliases;
 std::vector<
-	std::map<std::string,
-			 std::string>>             mvee::reverse_aliases;
-int                                    mvee::numvariants                         = 0;
-std::vector<std::string>               mvee::variant_ids;
-__thread monitor*                      mvee::active_monitor                      = NULL;
-__thread int                           mvee::active_monitorid                    = 0;
-int                                    mvee::shutdown_signal                     = 0;
+    std::map<std::string,
+             std::string>>
+    mvee::reverse_aliases;
+int mvee::numvariants = 0;
+std::vector<std::string> mvee::variant_ids;
+__thread monitor *mvee::active_monitor = NULL;
+__thread int mvee::active_monitorid = 0;
+int mvee::shutdown_signal = 0;
 std::map<unsigned long, unsigned char> mvee::syslocks_table;
-__thread bool                          mvee::in_logging_handler                  = false;
-pthread_mutex_t                        mvee::global_lock                         = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
-pthread_cond_t                         mvee::global_cond                         = PTHREAD_COND_INITIALIZER;
-std::map<std::string, std::weak_ptr<mmap_addr2line_proc> >
-                                       mvee::addr2line_cache;
-std::map<std::string, std::weak_ptr<dwarf_info> >
-                                       mvee::dwarf_cache;
-std::map<std::string, std::string>     mvee::unstripped_binaries_cache;
-bool                                   mvee::should_garbage_collect              = false;
-std::vector<monitor*>                  mvee::dead_monitors;
-std::vector<monitor*>                  mvee::active_monitors;
-std::vector<monitor*>                  mvee::inactive_monitors;
-std::map<pid_t, std::vector<pid_t> >   mvee::variant_pid_mapping;
-std::map<int, monitor*>                mvee::monitor_id_mapping;
-int                                    mvee::next_monitorid                      = 0;
-std::vector<detachedvariant*>          mvee::detachlist;
-std::string                            mvee::orig_working_dir;
-std::string                            mvee::mvee_root_dir;
-unsigned int                           mvee::stack_limit                         = 0;
-int                                    mvee::num_cores                           = 0;
-int                                    mvee::num_physical_cpus                   = 0;
-pid_t                                  mvee::process_pid                         = 0;
-__thread pid_t                         mvee::thread_pid                          = 0;
-std::map<std::string, std::string>     mvee::interp_map;
-bool                                   mvee::should_generate_backtraces          = false;
-volatile unsigned long                 mvee::can_run                             = 0;
-std::string                            mvee::config_file_name                    = "";
-bool                                   mvee::config_show                         = false;
-std::string                            mvee::config_variant_set                  = "default";
-Json::Value                            mvee::config;
-Json::Value*                           mvee::config_monitor                      = NULL;
-Json::Value*                           mvee::config_variant_global               = NULL;
-Json::Value*                           mvee::config_variant_exec                 = NULL;
-std::string                            mvee::synctrace_logfile                   = "";
+__thread bool mvee::in_logging_handler = false;
+pthread_mutex_t mvee::global_lock = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+pthread_cond_t mvee::global_cond = PTHREAD_COND_INITIALIZER;
+std::map<std::string, std::weak_ptr<mmap_addr2line_proc>>
+    mvee::addr2line_cache;
+std::map<std::string, std::weak_ptr<dwarf_info>>
+    mvee::dwarf_cache;
+std::map<std::string, std::string> mvee::unstripped_binaries_cache;
+bool mvee::should_garbage_collect = false;
+std::vector<monitor *> mvee::dead_monitors;
+std::vector<monitor *> mvee::active_monitors;
+std::vector<monitor *> mvee::inactive_monitors;
+std::map<pid_t, std::vector<pid_t>> mvee::variant_pid_mapping;
+std::map<int, monitor *> mvee::monitor_id_mapping;
+int mvee::next_monitorid = 0;
+std::vector<detachedvariant *> mvee::detachlist;
+std::string mvee::orig_working_dir;
+std::string mvee::mvee_root_dir;
+unsigned int mvee::stack_limit = 0;
+int mvee::num_cores = 0;
+int mvee::num_physical_cpus = 0;
+pid_t mvee::process_pid = 0;
+__thread pid_t mvee::thread_pid = 0;
+std::map<std::string, std::string> mvee::interp_map;
+bool mvee::should_generate_backtraces = false;
+volatile unsigned long mvee::can_run = 0;
+std::string mvee::config_file_name = "";
+bool mvee::config_show = false;
+std::string mvee::config_variant_set = "default";
+Json::Value mvee::config;
+Json::Value *mvee::config_monitor = NULL;
+Json::Value *mvee::config_variant_global = NULL;
+Json::Value *mvee::config_variant_exec = NULL;
+std::string mvee::synctrace_logfile = "";
 
 /*-----------------------------------------------------------------------------
     Prototypes
 -----------------------------------------------------------------------------*/
-void                    mvee_mon_external_termination_request(int sig);
+void mvee_mon_external_termination_request(int sig);
 
 /*-----------------------------------------------------------------------------
   strsplit
 ------------------------------------------------------------------------------*/
 std::deque<std::string> mvee::strsplit(const std::string &s, char delim)
 {
-    std::stringstream       ss(s);
-    std::string             item;
+    std::stringstream ss(s);
+    std::string item;
     std::deque<std::string> elems;
 
     while (std::getline(ss, item, delim))
@@ -108,32 +112,32 @@ std::deque<std::string> mvee::strsplit(const std::string &s, char delim)
 /*-----------------------------------------------------------------------------
   str_ends_with
 ------------------------------------------------------------------------------*/
-bool mvee::str_ends_with(std::string& search_in_str, const char* suffix)
+bool mvee::str_ends_with(std::string &search_in_str, const char *suffix)
 {
     std::string search_for_str(suffix);
-    return search_in_str.size() >= search_for_str.size() && 
-		search_in_str.rfind(search_for_str) == (search_in_str.size()-search_for_str.size());
+    return search_in_str.size() >= search_for_str.size() &&
+           search_in_str.rfind(search_for_str) == (search_in_str.size() - search_for_str.size());
 }
 
 /*-----------------------------------------------------------------------------
     mvee_strdup - returns a string copy allocated with new[] instead of
     malloc... This is just here to keep valgrind happy
 -----------------------------------------------------------------------------*/
-char* mvee::strdup(const char* orig)
+char *mvee::strdup(const char *orig)
 {
     if (!orig)
         return NULL;
 
-    int   orig_len   = strlen(orig);
-    char* new_string = new char[orig_len+1];
-    memcpy(new_string, orig, strlen(orig)+1);
+    int orig_len = strlen(orig);
+    char *new_string = new char[orig_len + 1];
+    memcpy(new_string, orig, strlen(orig) + 1);
     return new_string;
 }
 
 /*-----------------------------------------------------------------------------
     mvee_is_printable_string
 -----------------------------------------------------------------------------*/
-bool mvee::is_printable_string(char* str, int len)
+bool mvee::is_printable_string(char *str, int len)
 {
     for (int i = 0; i < len; ++i)
     {
@@ -147,50 +151,49 @@ bool mvee::is_printable_string(char* str, int len)
 /*-----------------------------------------------------------------------------
     upcase
 -----------------------------------------------------------------------------*/
-std::string mvee::upcase(const char* lower_case_string)
+std::string mvee::upcase(const char *lower_case_string)
 {
-	std::string out(lower_case_string);
-	std::transform(out.begin(), out.end(), out.begin(), ::toupper);
-	return out;
+    std::string out(lower_case_string);
+    std::transform(out.begin(), out.end(), out.begin(), ::toupper);
+    return out;
 }
 
 /*-----------------------------------------------------------------------------
     mask_is_unchecked_syscall
 -----------------------------------------------------------------------------*/
-unsigned char mvee::mask_is_unchecked_syscall(unsigned char* mask, unsigned long syscall_no)
+unsigned char mvee::mask_is_unchecked_syscall(unsigned char *mask, unsigned long syscall_no)
 {
-	unsigned long no_to_byte, bit_in_byte;
+    unsigned long no_to_byte, bit_in_byte;
 
-	if (syscall_no > ROUND_UP(MAX_CALLS, 8))
-		return 0;
+    if (syscall_no > ROUND_UP(MAX_CALLS, 8))
+        return 0;
 
-	no_to_byte  = syscall_no / 8;
-	bit_in_byte = syscall_no % 8;
+    no_to_byte = syscall_no / 8;
+    bit_in_byte = syscall_no % 8;
 
-	if (mask[no_to_byte] & (1 << (7 - bit_in_byte)))
-		return 1;
-	return 0;
+    if (mask[no_to_byte] & (1 << (7 - bit_in_byte)))
+        return 1;
+    return 0;
 }
 
 /*-----------------------------------------------------------------------------
     mask_set_unchecked_syscall
 -----------------------------------------------------------------------------*/
-void mvee::mask_set_unchecked_syscall(unsigned char* mask, unsigned long syscall_no, unsigned char unchecked)
+void mvee::mask_set_unchecked_syscall(unsigned char *mask, unsigned long syscall_no, unsigned char unchecked)
 {
-	unsigned long no_to_byte, bit_in_byte;
+    unsigned long no_to_byte, bit_in_byte;
 
-	if (syscall_no > ROUND_UP(MAX_CALLS, 8))
-		return;
+    if (syscall_no > ROUND_UP(MAX_CALLS, 8))
+        return;
 
-	no_to_byte  = syscall_no / 8;
-	bit_in_byte = syscall_no % 8;
+    no_to_byte = syscall_no / 8;
+    bit_in_byte = syscall_no % 8;
 
-	if (unchecked)
-		mask[no_to_byte] |= (1 << (7 - bit_in_byte));
-	else
-		mask[no_to_byte] &= ~(1 << (7 - bit_in_byte));
+    if (unchecked)
+        mask[no_to_byte] |= (1 << (7 - bit_in_byte));
+    else
+        mask[no_to_byte] &= ~(1 << (7 - bit_in_byte));
 }
-
 
 /*-----------------------------------------------------------------------------
     mvee_old_sigset_to_new_sigset
@@ -214,31 +217,31 @@ sigset_t mvee::old_sigset_to_new_sigset(unsigned long old_sigset)
 -----------------------------------------------------------------------------*/
 std::string mvee::get_alias(int variantnum, std::string path)
 {
-//	warnf("Looking for alias of %s in variant %d\n", path.c_str(), variantnum);
-	auto alias = aliases[variantnum].find(path);
-	if (alias != aliases[variantnum].end())
-		return alias->second;
+    //	warnf("Looking for alias of %s in variant %d\n", path.c_str(), variantnum);
+    auto alias = aliases[variantnum].find(path);
+    if (alias != aliases[variantnum].end())
+        return alias->second;
 
-	// built-in aliases
-	/* These are generally not aliased anymore, keeping this code here in case it is ever needed
-	if (path.find("/dev/shm/") == 0 ||
-		path.find("/run/shm/") == 0)
-	{
-		std::stringstream ss;
-		ss << path << "_variant" << variantnum;
-		return ss.str();
-	}
-	else */
-	if (path.find("/home/stijn/glibc-build/etc/") == 0)
-	{
-		return path.replace(0, strlen("/home/stijn/glibc-build/etc/"), "/etc/");
-	}
-	else if (path.find("/home/stijn/glibc-build/") == 0)
-	{
-		return path.replace(0, strlen("/home/stijn/glibc-build/"), "/usr/");
-	}
+    // built-in aliases
+    /* These are generally not aliased anymore, keeping this code here in case it is ever needed
+    if (path.find("/dev/shm/") == 0 ||
+        path.find("/run/shm/") == 0)
+    {
+        std::stringstream ss;
+        ss << path << "_variant" << variantnum;
+        return ss.str();
+    }
+    else */
+    if (path.find("/home/stijn/glibc-build/etc/") == 0)
+    {
+        return path.replace(0, strlen("/home/stijn/glibc-build/etc/"), "/etc/");
+    }
+    else if (path.find("/home/stijn/glibc-build/") == 0)
+    {
+        return path.replace(0, strlen("/home/stijn/glibc-build/"), "/usr/");
+    }
 
-	return "";
+    return "";
 }
 
 /*-----------------------------------------------------------------------------
@@ -246,31 +249,31 @@ std::string mvee::get_alias(int variantnum, std::string path)
 -----------------------------------------------------------------------------*/
 void mvee::init_aliases()
 {
-	aliases.resize(mvee::numvariants);
-	reverse_aliases.resize(mvee::numvariants);
+    aliases.resize(mvee::numvariants);
+    reverse_aliases.resize(mvee::numvariants);
 
-	for (int i = 0; i < mvee::numvariants; ++i)
-	{
-		Json::Value& variant_config =
-			mvee::config["variant"]["specs"][mvee::variant_ids[i]]["exec"];
+    for (int i = 0; i < mvee::numvariants; ++i)
+    {
+        Json::Value &variant_config =
+            mvee::config["variant"]["specs"][mvee::variant_ids[i]]["exec"];
 
-		if (!variant_config["alias"])
-			continue;
+        if (!variant_config["alias"])
+            continue;
 
-		for (auto alias : variant_config["alias"])
-		{
-			auto str = alias.asString();
-			size_t pos = str.find("=");
-			if (pos != std::string::npos)
-			{
-				std::string pattern     = str.substr(0, pos);
-				std::string replacement = str.substr(pos + 1);
+        for (auto alias : variant_config["alias"])
+        {
+            auto str = alias.asString();
+            size_t pos = str.find("=");
+            if (pos != std::string::npos)
+            {
+                std::string pattern = str.substr(0, pos);
+                std::string replacement = str.substr(pos + 1);
 
-				aliases[i].insert(std::make_pair(pattern, replacement));
-				reverse_aliases[i].insert(std::make_pair(pattern, replacement));
-			}	
-		}
-	}
+                aliases[i].insert(std::make_pair(pattern, replacement));
+                reverse_aliases[i].insert(std::make_pair(pattern, replacement));
+            }
+        }
+    }
 }
 
 /*-----------------------------------------------------------------------------
@@ -278,38 +281,37 @@ void mvee::init_aliases()
 -----------------------------------------------------------------------------*/
 bool mvee::are_aliases(std::vector<std::string> paths)
 {
-	std::string cmp;
-	
-	for (int i = 0; i < mvee::numvariants; ++i)
-	{
-		auto source = reverse_aliases[i].find(paths[i]);
-		if (source == reverse_aliases[i].end())
-			return false;
+    std::string cmp;
 
-		if (cmp == "")
-		{
-			cmp = source->second;
-			continue;
-		}
-		else
-		{
-			if (cmp != source->second)
-				return false;
-		}			 
-	}
+    for (int i = 0; i < mvee::numvariants; ++i)
+    {
+        auto source = reverse_aliases[i].find(paths[i]);
+        if (source == reverse_aliases[i].end())
+            return false;
 
-	return true;
+        if (cmp == "")
+        {
+            cmp = source->second;
+            continue;
+        }
+        else
+        {
+            if (cmp != source->second)
+                return false;
+        }
+    }
+
+    return true;
 }
 
 /*-----------------------------------------------------------------------------
     map_master_to_slave_pids
 -----------------------------------------------------------------------------*/
-bool mvee::map_master_to_slave_pids(pid_t master_pid, std::vector<pid_t>& slave_pids)
+bool mvee::map_master_to_slave_pids(pid_t master_pid, std::vector<pid_t> &slave_pids)
 {
-    MutexLock                                      lock(&mvee::global_lock);
+    MutexLock lock(&mvee::global_lock);
 
-    std::map<pid_t, std::vector<pid_t> >::iterator it
-        = mvee::variant_pid_mapping.find(master_pid);
+    std::map<pid_t, std::vector<pid_t>>::iterator it = mvee::variant_pid_mapping.find(master_pid);
     if (it == mvee::variant_pid_mapping.end())
     {
         debugf("no suitable mapping found for pid %d\n", master_pid);
@@ -330,19 +332,19 @@ bool mvee::map_master_to_slave_pids(pid_t master_pid, std::vector<pid_t>& slave_
 -----------------------------------------------------------------------------*/
 bool mvee::is_monitored_variant(pid_t variant_pid)
 {
-	MutexLock lock(&mvee::global_lock);
-	return mvee::variant_pid_mapping.find(variant_pid) !=
-		mvee::variant_pid_mapping.end();
+    MutexLock lock(&mvee::global_lock);
+    return mvee::variant_pid_mapping.find(variant_pid) !=
+           mvee::variant_pid_mapping.end();
 }
 
 /*-----------------------------------------------------------------------------
     get_addr2line_proc - global lock must be locked when calling this function
 -----------------------------------------------------------------------------*/
-std::shared_ptr<mmap_addr2line_proc> mvee::get_addr2line_proc(const std::string& input_file_name)
+std::shared_ptr<mmap_addr2line_proc> mvee::get_addr2line_proc(const std::string &input_file_name)
 {
-    std::shared_ptr<mmap_addr2line_proc>                                 result;
+    std::shared_ptr<mmap_addr2line_proc> result;
 
-    std::map<std::string, std::weak_ptr<mmap_addr2line_proc> >::iterator it =
+    std::map<std::string, std::weak_ptr<mmap_addr2line_proc>>::iterator it =
         mvee::addr2line_cache.find(input_file_name);
     if (it != mvee::addr2line_cache.end())
     {
@@ -361,11 +363,11 @@ std::shared_ptr<mmap_addr2line_proc> mvee::get_addr2line_proc(const std::string&
 
     global lock must be locked when calling this function!!!
 -----------------------------------------------------------------------------*/
-std::shared_ptr<dwarf_info> mvee::get_dwarf_info(const std::string& file)
+std::shared_ptr<dwarf_info> mvee::get_dwarf_info(const std::string &file)
 {
-    std::shared_ptr<dwarf_info>                                 result;
+    std::shared_ptr<dwarf_info> result;
 
-    std::map<std::string, std::weak_ptr<dwarf_info> >::iterator it =
+    std::map<std::string, std::weak_ptr<dwarf_info>>::iterator it =
         mvee::dwarf_cache.find(file);
     if (it != mvee::dwarf_cache.end())
     {
@@ -380,119 +382,119 @@ std::shared_ptr<dwarf_info> mvee::get_dwarf_info(const std::string& file)
 /*-----------------------------------------------------------------------------
     os_get_build_id - get the GNU build ID from the ELF notes section
 -----------------------------------------------------------------------------*/
-std::string mvee::os_get_build_id(const std::string& file)
+std::string mvee::os_get_build_id(const std::string &file)
 {
-	std::stringstream cmd;
-	cmd << "readelf -n " << file << " | grep \"Build ID:\" | cut -d':' -f2 | tr -d ' '";
-	return mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL);
+    std::stringstream cmd;
+    cmd << "readelf -n " << file << " | grep \"Build ID:\" | cut -d':' -f2 | tr -d ' '";
+    return mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL);
 }
 
 /*-----------------------------------------------------------------------------
     os_get_unstripped_binary - look for the unstripped version of the specified
-	ELF binary. Return "" if no such binary can be found in /usr/lib/debug
+    ELF binary. Return "" if no such binary can be found in /usr/lib/debug
 -----------------------------------------------------------------------------*/
-std::string mvee::os_get_unstripped_binary(const std::string& file)
+std::string mvee::os_get_unstripped_binary(const std::string &file)
 {
-	// First, see if we've already done this lookup before
-	{
-		MutexLock lock(&mvee::global_lock);
+    // First, see if we've already done this lookup before
+    {
+        MutexLock lock(&mvee::global_lock);
 
-		auto it = mvee::unstripped_binaries_cache.find(file);
-		if (it != mvee::unstripped_binaries_cache.end())
-			return it->second;
-	}
+        auto it = mvee::unstripped_binaries_cache.find(file);
+        if (it != mvee::unstripped_binaries_cache.end())
+            return it->second;
+    }
 
-	// Not in the cache. Let's fetch the build ID and see if we
-	// can find a binary with a matching build ID and name in /usr/lib/debug
-	auto orig_build_id = mvee::os_get_build_id(file);
+    // Not in the cache. Let's fetch the build ID and see if we
+    // can find a binary with a matching build ID and name in /usr/lib/debug
+    auto orig_build_id = mvee::os_get_build_id(file);
 
-	// Look for other unstripped versions of the binary now...
-	auto basename = file.substr(file.find_last_of('/'));
-	std::stringstream cmd;
-	cmd << "find /usr/lib/debug/* | grep " << basename;
-	std::stringstream binaries(mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL));
-	std::string binary;
+    // Look for other unstripped versions of the binary now...
+    auto basename = file.substr(file.find_last_of('/'));
+    std::stringstream cmd;
+    cmd << "find /usr/lib/debug/* | grep " << basename;
+    std::stringstream binaries(mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL));
+    std::string binary;
 
-	while(std::getline(binaries, binary))
-	{
-		auto build_id = mvee::os_get_build_id(binary);
+    while (std::getline(binaries, binary))
+    {
+        auto build_id = mvee::os_get_build_id(binary);
 
-		if (orig_build_id == build_id)
-		{
-			MutexLock lock(&mvee::global_lock);
+        if (orig_build_id == build_id)
+        {
+            MutexLock lock(&mvee::global_lock);
 
-			auto it = mvee::unstripped_binaries_cache.find(file);
-			if (it == mvee::unstripped_binaries_cache.end())
-			{
-				debugf("Found unstripped version of ELF file\n");
-				debugf("> Original (stripped) file: %s\n", file.c_str());
-				debugf("> Unstripped file: %s\n", binary.c_str());
-				mvee::unstripped_binaries_cache.insert(std::make_pair(file, binary));
-			}
-			return binary;
-		}
-	}
+            auto it = mvee::unstripped_binaries_cache.find(file);
+            if (it == mvee::unstripped_binaries_cache.end())
+            {
+                debugf("Found unstripped version of ELF file\n");
+                debugf("> Original (stripped) file: %s\n", file.c_str());
+                debugf("> Unstripped file: %s\n", binary.c_str());
+                mvee::unstripped_binaries_cache.insert(std::make_pair(file, binary));
+            }
+            return binary;
+        }
+    }
 
-	return "";	
+    return "";
 }
 
 /*-----------------------------------------------------------------------------
     os_has_noninstrumented_atomics
 -----------------------------------------------------------------------------*/
-bool mvee::os_has_noninstrumented_atomics (const std::string& file)
+bool mvee::os_has_noninstrumented_atomics(const std::string &file)
 {
-	static std::map<std::string, bool> has_noninstrumented_atomics;
-   
-	// check if it's already in the map
-	{
-		MutexLock lock(&mvee::global_lock);
-		auto it = has_noninstrumented_atomics.find(file);
+    static std::map<std::string, bool> has_noninstrumented_atomics;
 
-		if (it != has_noninstrumented_atomics.end())
-			return it->second;
-	}
+    // check if it's already in the map
+    {
+        MutexLock lock(&mvee::global_lock);
+        auto it = has_noninstrumented_atomics.find(file);
 
-	if (file.find("/patched_binaries/") == std::string::npos)
-	{
-		// not in the map yet, disassemble and check
-		std::stringstream cmd;
-		cmd << "objdump --disassemble " << file << " | " << MVEE_ARCH_FIND_ATOMIC_OPS_STRING;
-		std::stringstream instructions(mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL));
-		std::string instruction, prev_instruction;
+        if (it != has_noninstrumented_atomics.end())
+            return it->second;
+    }
 
-		while (std::getline(instructions, instruction))
-		{
-			// the filtered disassembly includes only atomic operations and calls to the sync agent
-			// Thus, if this line is nog a call to the sync agent, it must be an atomic op
-			if (instruction.find("mvee_atomic") == std::string::npos)
-			{
-				// check if the previous instruction was a call to the preop function
-				// if it was, then this atomic op is wrapped
-				if (prev_instruction.find("mvee_atomic_preop") == std::string::npos)
-				{
-					MutexLock lock(&mvee::global_lock);
-					auto it = has_noninstrumented_atomics.find(file);
-				
-					if (it == has_noninstrumented_atomics.end())
-						has_noninstrumented_atomics.insert(std::make_pair(file, true));
-					return true;				
-				}
-			}
+    if (file.find("/patched_binaries/") == std::string::npos)
+    {
+        // not in the map yet, disassemble and check
+        std::stringstream cmd;
+        cmd << "objdump --disassemble " << file << " | " << MVEE_ARCH_FIND_ATOMIC_OPS_STRING;
+        std::stringstream instructions(mvee::log_read_from_proc_pipe(cmd.str().c_str(), NULL));
+        std::string instruction, prev_instruction;
 
-			prev_instruction = instruction;
-		}
-	}
+        while (std::getline(instructions, instruction))
+        {
+            // the filtered disassembly includes only atomic operations and calls to the sync agent
+            // Thus, if this line is nog a call to the sync agent, it must be an atomic op
+            if (instruction.find("mvee_atomic") == std::string::npos)
+            {
+                // check if the previous instruction was a call to the preop function
+                // if it was, then this atomic op is wrapped
+                if (prev_instruction.find("mvee_atomic_preop") == std::string::npos)
+                {
+                    MutexLock lock(&mvee::global_lock);
+                    auto it = has_noninstrumented_atomics.find(file);
 
-	// no non-instrumented ops found
-	{
-		MutexLock lock(&mvee::global_lock);
-		auto it = has_noninstrumented_atomics.find(file);
-		
-		if (it == has_noninstrumented_atomics.end())
-			has_noninstrumented_atomics.insert(std::make_pair(file, false));
-	}
+                    if (it == has_noninstrumented_atomics.end())
+                        has_noninstrumented_atomics.insert(std::make_pair(file, true));
+                    return true;
+                }
+            }
 
-	return false;	
+            prev_instruction = instruction;
+        }
+    }
+
+    // no non-instrumented ops found
+    {
+        MutexLock lock(&mvee::global_lock);
+        auto it = has_noninstrumented_atomics.find(file);
+
+        if (it == has_noninstrumented_atomics.end())
+            has_noninstrumented_atomics.insert(std::make_pair(file, false));
+    }
+
+    return false;
 }
 
 /*-----------------------------------------------------------------------------
@@ -502,7 +504,7 @@ std::string mvee::os_get_orig_working_dir()
 {
     if (mvee::orig_working_dir == "")
     {
-        char* cwd = getcwd(NULL, 0);
+        char *cwd = getcwd(NULL, 0);
         mvee::orig_working_dir = std::string(cwd);
         free(cwd);
     }
@@ -515,10 +517,10 @@ std::string mvee::os_get_orig_working_dir()
 std::string mvee::os_get_mvee_root_dir()
 {
     if ((*mvee::config_monitor)["root_path"].isNull() ||
-		strlen((*mvee::config_monitor)["root_path"].asCString()) == 0)
+        strlen((*mvee::config_monitor)["root_path"].asCString()) == 0)
     {
-		char cmd[500];
-		sprintf(cmd, "readlink -f /proc/%d/exe | sed 's/\\(.*\\)\\/.*/\\1\\/..\\/..\\/..\\//' | xargs readlink -f | tr -d '\\n'", getpid());
+        char cmd[500];
+        sprintf(cmd, "readlink -f /proc/%d/exe | sed 's/\\(.*\\)\\/.*/\\1\\/..\\/..\\/..\\//' | xargs readlink -f | tr -d '\\n'", getpid());
         std::string out = mvee::log_read_from_proc_pipe(cmd, NULL);
 
         if (out != "")
@@ -657,18 +659,18 @@ void mvee::os_check_kernel_cmdline()
 -----------------------------------------------------------------------------*/
 bool mvee::os_try_update_shmmax()
 {
-    unsigned long desired_size   = 0xFFFFFFFF;
-    unsigned long desired_pages  = 0x100000;
+    unsigned long desired_size = 0xFFFFFFFF;
+    unsigned long desired_pages = 0x100000;
 
 #ifndef MVEE_BENCHMARK
-    unsigned long shmmax         = std::stoul(mvee::log_read_from_proc_pipe("sysctl kernel.shmmax | cut -d' ' -f3 | tr -d '\\n'", NULL));
+    unsigned long shmmax = std::stoul(mvee::log_read_from_proc_pipe("sysctl kernel.shmmax | cut -d' ' -f3 | tr -d '\\n'", NULL));
     debugf("current kernel.shmmax = %lu\n", shmmax);
     debugf("===> trying to adjust kernel.shmmax\n");
 #endif
 
-    char          cmd[200];
+    char cmd[200];
     sprintf(cmd, "sudo -n sysctl -w kernel.shmmax=%ld", desired_size);
-    std::string   _shmmax_update = mvee::log_read_from_proc_pipe(cmd, NULL);
+    std::string _shmmax_update = mvee::log_read_from_proc_pipe(cmd, NULL);
     if (_shmmax_update.find("kernel.shmmax") != 0)
     {
         warnf("failed to adjust kernel.shmmax. do you have sudo NOPASSWD rights?\n");
@@ -676,7 +678,7 @@ bool mvee::os_try_update_shmmax()
     }
 
     sprintf(cmd, "sudo -n sysctl -w kernel.shmall=%ld", desired_pages);
-    std::string   _shmall_update = mvee::log_read_from_proc_pipe(cmd, NULL);
+    std::string _shmall_update = mvee::log_read_from_proc_pipe(cmd, NULL);
     if (_shmall_update.find("kernel.shmall") != 0)
     {
         warnf("failed to adjust kernel.shmall. do you have sudo NOPASSWD rights?\n");
@@ -722,45 +724,46 @@ std::string mvee::os_get_interp()
 /*-----------------------------------------------------------------------------
     os_can_load_indirect - TODO: Add cache here
 -----------------------------------------------------------------------------*/
-bool mvee::os_can_load_indirect(std::string& file)
-{	
+bool mvee::os_can_load_indirect(std::string &file)
+{
     std::string cmd = "/usr/bin/readelf -d " + file + " 2>&1";
     std::string dyn = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
 
-	// invalid ELF file
-	if (dyn.find("Error") != std::string::npos)
-		return true;
+    // invalid ELF file
+    if (dyn.find("Error") != std::string::npos)
+        return true;
 
-	// dynamic section found => We can use the LD_Loader
-	if (dyn.find("There is no dynamic section in this file.") == std::string::npos)
-		return true;
+    // dynamic section found => We can use the LD_Loader
+    if (dyn.find("There is no dynamic section in this file.") == std::string::npos)
+        return true;
 
-	cmd = "/usr/bin/readelf -h " + file + " | grep Type 2>&1";
-	std::string header = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
+    cmd = "/usr/bin/readelf -h " + file + " | grep Type 2>&1";
+    std::string header = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
 
-	// statically linked, but PIE compiled
-	if (header.find("DYN") != std::string::npos)
-		return true;
+    // statically linked, but PIE compiled
+    if (header.find("DYN") != std::string::npos)
+        return true;
 
-	// statically linked and position dependent => can't use LD_Loader
-	return false;
+    // statically linked and position dependent => can't use LD_Loader
+    return false;
 }
 
 /*-----------------------------------------------------------------------------
     os_get_interp_for_file - if file is a script, return the interpreter for
     that script
 -----------------------------------------------------------------------------*/
-void mvee::os_register_interp(std::string& file, const char* interp)
+void mvee::os_register_interp(std::string &file, const char *interp)
 {
     MutexLock lock(&mvee::global_lock);
     if (interp_map.find(file) != interp_map.end())
         interp_map.insert(std::pair<std::string, std::string>(file, interp));
 }
 
-bool mvee::os_add_interp_for_file(std::deque<char*>& add_to_queue, std::string& file)
+bool mvee::os_add_interp_for_file(std::deque<char *> &add_to_queue, std::string &file)
 {
-    {   MutexLock lock(&mvee::global_lock);
-        auto      it = interp_map.find(file);
+    {
+        MutexLock lock(&mvee::global_lock);
+        auto it = interp_map.find(file);
 
         if (it != interp_map.end())
         {
@@ -768,9 +771,9 @@ bool mvee::os_add_interp_for_file(std::deque<char*>& add_to_queue, std::string& 
                 add_to_queue.push_front(mvee::strdup(it->second.c_str()));
             return true;
         }
-	}
+    }
 
-    std::string cmd       = "/usr/bin/file -L " + file + " | grep -v ERROR";
+    std::string cmd = "/usr/bin/file -L " + file + " | grep -v ERROR";
     std::string file_type = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
 
     if (file_type == "")
@@ -784,11 +787,11 @@ bool mvee::os_add_interp_for_file(std::deque<char*>& add_to_queue, std::string& 
 
     // the file exists but is not ELF
     cmd = "/usr/bin/head -n1 " + file;
-    std::string interp    = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
+    std::string interp = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
     if (interp.find("#!") == 0)
     {
-        interp.erase(interp.begin(),                                  interp.begin()+1);
-        interp.erase(interp.begin(),                                  interp.begin()+interp.find("/"));
+        interp.erase(interp.begin(), interp.begin() + 1);
+        interp.erase(interp.begin(), interp.begin() + interp.find("/"));
         interp.erase(std::remove(interp.begin(), interp.end(), '\n'), interp.end());
         std::deque<std::string> tokens = mvee::strsplit(interp, ' ');
         while (tokens.size() > 0)
@@ -836,11 +839,11 @@ void mvee::os_reset_envp()
     // Dirty hack to force initialization of the environment.
     // Without this we'll get allocation behavior mismatches everywhere!
     // Even in GCC!!
-    putenv((char*)"THIS=SILLY");
-    putenv((char*)"LD_PRELOAD");
-    putenv((char*)"SPEC");
-    putenv((char*)"SPECPERLLIB");
-    putenv((char*)"LD_LIBRARY_PATH");
+    putenv((char *)"THIS=SILLY");
+    putenv((char *)"LD_PRELOAD");
+    putenv((char *)"SPEC");
+    putenv((char *)"SPECPERLLIB");
+    putenv((char *)"LD_LIBRARY_PATH");
     //    putenv((char*)"SPECPATH");
     //    putenv((char*)"SPECLIBPATH");
     //    putenv((char*)"SPECPROFILE");
@@ -848,185 +851,184 @@ void mvee::os_reset_envp()
 }
 
 /*-----------------------------------------------------------------------------
-    os_alloc_sysv_sharedmem - allocates a sysv shared memory block of the 
-	specified size.
+    os_alloc_sysv_sharedmem - allocates a sysv shared memory block of the
+    specified size.
 -----------------------------------------------------------------------------*/
-bool mvee::os_alloc_sysv_sharedmem(unsigned long alloc_size, int* id_ptr, int* size_ptr, void** ptr_ptr)
+bool mvee::os_alloc_sysv_sharedmem(unsigned long alloc_size, int *id_ptr, int *size_ptr, void **ptr_ptr)
 {
-	struct shmid_ds shared_buffer_ds;
-	int id = shmget(IPC_PRIVATE, alloc_size, IPC_CREAT | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    struct shmid_ds shared_buffer_ds;
+    int id = shmget(IPC_PRIVATE, alloc_size, IPC_CREAT | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 
-	// this might fail because we're trying to allocate too many
-	// shared memory segments or because the shared memory segment
-	// we're trying to allocate is too big.
-	//
-	// attempt to increase it here and retry!
-	if (id == -1)
-	{
-		if (!mvee::os_try_update_shmmax())
-			return false;
+    // this might fail because we're trying to allocate too many
+    // shared memory segments or because the shared memory segment
+    // we're trying to allocate is too big.
+    //
+    // attempt to increase it here and retry!
+    if (id == -1)
+    {
+        if (!mvee::os_try_update_shmmax())
+            return false;
 
-		id = shmget(IPC_PRIVATE, alloc_size, IPC_CREAT | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-	}
+        id = shmget(IPC_PRIVATE, alloc_size, IPC_CREAT | S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    }
 
-	if (id == -1)
-	{
-		warnf("Failed to allocate shared memory block! Are the IPC slots full? - alloc_size = %ld\n",
-			alloc_size);
-		return false;
-	}
+    if (id == -1)
+    {
+        warnf("Failed to allocate shared memory block! Are the IPC slots full? - alloc_size = %ld\n",
+              alloc_size);
+        return false;
+    }
 
-	if (shmctl(id, IPC_STAT, &shared_buffer_ds))
-	{
-		warnf("Failed to retrieve size of the shared memory block!\n");
-		return false;
-	}
+    if (shmctl(id, IPC_STAT, &shared_buffer_ds))
+    {
+        warnf("Failed to retrieve size of the shared memory block!\n");
+        return false;
+    }
 
-	if (id_ptr)
-		*id_ptr = id;
+    if (id_ptr)
+        *id_ptr = id;
 
-	if (size_ptr)
-		*size_ptr = shared_buffer_ds.shm_segsz;
+    if (size_ptr)
+        *size_ptr = shared_buffer_ds.shm_segsz;
 
-	if (ptr_ptr)
-	{
-		*ptr_ptr  = shmat(id, NULL, 0);
+    if (ptr_ptr)
+    {
+        *ptr_ptr = shmat(id, NULL, 0);
 
-		if (*ptr_ptr == (void*)-1)
-		{
-			warnf("Failed to attach to shared memory block! err = %d (%s)\n", errno, getTextualErrno(errno));
-			return false;
-		}
-	}
+        if (*ptr_ptr == (void *)-1)
+        {
+            warnf("Failed to attach to shared memory block! err = %d (%s)\n", errno, getTextualErrno(errno));
+            return false;
+        }
+    }
 
-	// Make sure that the buffer gets deleted when we detach from it
-	shmctl(id, IPC_RMID, &shared_buffer_ds);
+    // Make sure that the buffer gets deleted when we detach from it
+    shmctl(id, IPC_RMID, &shared_buffer_ds);
 
-
-	return true;
+    return true;
 }
 
 /*-----------------------------------------------------------------------------
     os_get_entry_point_address - get the relative entry point address for the
-	specified ELF binary
+    specified ELF binary
 -----------------------------------------------------------------------------*/
-unsigned long mvee::os_get_entry_point_address(std::string& binary)
+unsigned long mvee::os_get_entry_point_address(std::string &binary)
 {
-	unsigned long result = 0;
-	Elf* elf = NULL;
-	bool is_pie = false;
-	int fd = open(binary.c_str(), O_RDONLY, 0);
-	char* ident = NULL;
+    unsigned long result = 0;
+    Elf *elf = NULL;
+    bool is_pie = false;
+    int fd = open(binary.c_str(), O_RDONLY, 0);
+    char *ident = NULL;
 
-	elf_version(EV_CURRENT);
+    elf_version(EV_CURRENT);
 
-	if (fd > 0)
-		elf = elf_begin(fd, ELF_C_READ_MMAP, NULL);
+    if (fd > 0)
+        elf = elf_begin(fd, ELF_C_READ_MMAP, NULL);
 
-	if (fd < 0 || !elf)
-	{
-		warnf("Can't open file: %s - fd is %d\n", binary.c_str(), fd);
-		goto error;
-	}
+    if (fd < 0 || !elf)
+    {
+        warnf("Can't open file: %s - fd is %d\n", binary.c_str(), fd);
+        goto error;
+    }
 
-	// Identify the architecture
-	ident = elf_getident(elf, NULL);
-	if (!ident)
-		goto error;
+    // Identify the architecture
+    ident = elf_getident(elf, NULL);
+    if (!ident)
+        goto error;
 
-	if (ident[4] == ELFCLASS64)
-	{
-		Elf64_Ehdr* ehdr = elf64_getehdr(elf);
-		if (ehdr && ehdr->e_type == ET_DYN)
-			is_pie = true;
+    if (ident[4] == ELFCLASS64)
+    {
+        Elf64_Ehdr *ehdr = elf64_getehdr(elf);
+        if (ehdr && ehdr->e_type == ET_DYN)
+            is_pie = true;
 
-		result = ehdr->e_entry;
-
-        // find in-memory base address for this binary
-		if (!is_pie)
-		{
-			Elf64_Phdr* phdr = elf64_getphdr(elf);
-			size_t phdr_cnt;
-			unsigned long long image_base = 0xFFFFFFFFFFFFFFFF;
-			
-			if (!phdr || elf_getphdrnum(elf, &phdr_cnt) == -1)
-				goto error;
-
-			for (size_t i = 0; i < phdr_cnt; ++i)
-				if (phdr[i].p_type == PT_LOAD)
-					if (phdr[i].p_vaddr < image_base)
-						image_base = phdr[i].p_vaddr;
-
-			result -= image_base;
-		}
-	}
-	else
-	{
-		Elf32_Ehdr* ehdr = elf32_getehdr(elf);
-		if (ehdr && ehdr->e_type == ET_DYN)
-			is_pie = true;
-
-		result = ehdr->e_entry;
+        result = ehdr->e_entry;
 
         // find in-memory base address for this binary
-		if (!is_pie)
-		{
-			Elf32_Phdr* phdr = elf32_getphdr(elf);
-			size_t phdr_cnt;
-			unsigned long long image_base = 0x00000000FFFFFFFF;
-			
-			if (!phdr || elf_getphdrnum(elf, &phdr_cnt) == -1)
-				goto error;
+        if (!is_pie)
+        {
+            Elf64_Phdr *phdr = elf64_getphdr(elf);
+            size_t phdr_cnt;
+            unsigned long long image_base = 0xFFFFFFFFFFFFFFFF;
 
-			for (size_t i = 0; i < phdr_cnt; ++i)
-				if (phdr[i].p_type == PT_LOAD)
-					if (phdr[i].p_vaddr < image_base)
-						image_base = phdr[i].p_vaddr;
+            if (!phdr || elf_getphdrnum(elf, &phdr_cnt) == -1)
+                goto error;
 
-			result -= image_base;
-		}
-	}
+            for (size_t i = 0; i < phdr_cnt; ++i)
+                if (phdr[i].p_type == PT_LOAD)
+                    if (phdr[i].p_vaddr < image_base)
+                        image_base = phdr[i].p_vaddr;
 
-error:	
-	if (elf)
-		elf_end(elf);
-	if (fd > 0)
-		close(fd);
-	return result;
+            result -= image_base;
+        }
+    }
+    else
+    {
+        Elf32_Ehdr *ehdr = elf32_getehdr(elf);
+        if (ehdr && ehdr->e_type == ET_DYN)
+            is_pie = true;
+
+        result = ehdr->e_entry;
+
+        // find in-memory base address for this binary
+        if (!is_pie)
+        {
+            Elf32_Phdr *phdr = elf32_getphdr(elf);
+            size_t phdr_cnt;
+            unsigned long long image_base = 0x00000000FFFFFFFF;
+
+            if (!phdr || elf_getphdrnum(elf, &phdr_cnt) == -1)
+                goto error;
+
+            for (size_t i = 0; i < phdr_cnt; ++i)
+                if (phdr[i].p_type == PT_LOAD)
+                    if (phdr[i].p_vaddr < image_base)
+                        image_base = phdr[i].p_vaddr;
+
+            result -= image_base;
+        }
+    }
+
+error:
+    if (elf)
+        elf_end(elf);
+    if (fd > 0)
+        close(fd);
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
     os_get_rpath - get the relative library path for the specified binary
 -----------------------------------------------------------------------------*/
-std::string mvee::os_get_rpath(std::string& binary)
+std::string mvee::os_get_rpath(std::string &binary)
 {
-	std::string cmd = "objdump -p " + binary + "| grep RPATH | tr -d ' ' | sed 's/RPATH//'";
-	std::string rpath = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
+    std::string cmd = "objdump -p " + binary + "| grep RPATH | tr -d ' ' | sed 's/RPATH//'";
+    std::string rpath = mvee::log_read_from_proc_pipe(cmd.c_str(), NULL);
 
-	if (rpath.size() > 0)
-	{
-		if (rpath.find("$ORIGIN") != std::string::npos)
-		{
-			char* dir = dirname(mvee::strdup(binary.c_str()));
+    if (rpath.size() > 0)
+    {
+        if (rpath.find("$ORIGIN") != std::string::npos)
+        {
+            char *dir = dirname(mvee::strdup(binary.c_str()));
 
-			rpath.replace(rpath.find("$ORIGIN"), strlen("$ORIGIN"), dir);
+            rpath.replace(rpath.find("$ORIGIN"), strlen("$ORIGIN"), dir);
 
-			if (dir)
-				free(dir);
-		}
+            if (dir)
+                free(dir);
+        }
 
-		char* path = realpath(rpath.c_str(), NULL);
-		mvee::warnf("realpath = %s (errno: %s)\n", path, getTextualErrno(errno));
-		if (path)
-		{
-			rpath = std::string(path);
-			free(path);
-		}
-	}
+        char *path = realpath(rpath.c_str(), NULL);
+        mvee::warnf("realpath = %s (errno: %s)\n", path, getTextualErrno(errno));
+        if (path)
+        {
+            rpath = std::string(path);
+            free(path);
+        }
+    }
 
-	mvee::warnf("execve rpath = %s\n", rpath.c_str());
+    mvee::warnf("execve rpath = %s\n", rpath.c_str());
 
-	return rpath;
+    return rpath;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1034,31 +1036,31 @@ std::string mvee::os_get_rpath(std::string& binary)
 -----------------------------------------------------------------------------*/
 std::string mvee::os_normalize_path_name(std::string path)
 {
-	char* tmp = realpath(path.c_str(), NULL);
+    char *tmp = realpath(path.c_str(), NULL);
 
-	if (!tmp)
-	{
-		if (errno == ENOENT)
-		{
-			auto slash = path.rfind('/');
-			if (slash != std::string::npos)
-			{
-				auto dir_only = path.substr(0, slash);
-				auto file = path.substr(slash);
-				auto normalized_dir = os_normalize_path_name(dir_only);
-				return normalized_dir + file;
-			}
+    if (!tmp)
+    {
+        if (errno == ENOENT)
+        {
+            auto slash = path.rfind('/');
+            if (slash != std::string::npos)
+            {
+                auto dir_only = path.substr(0, slash);
+                auto file = path.substr(slash);
+                auto normalized_dir = os_normalize_path_name(dir_only);
+                return normalized_dir + file;
+            }
 
-			return path;
-		}
-		else
-			return path;
-	}
-	{
-		std::string result(tmp);
-		free(tmp);
-		return result;
-	}
+            return path;
+        }
+        else
+            return path;
+    }
+    {
+        std::string result(tmp);
+        free(tmp);
+        return result;
+    }
 }
 
 /*-----------------------------------------------------------------------------
@@ -1083,7 +1085,7 @@ void mvee::unlock()
 void mvee::request_shutdown(bool should_backtrace)
 {
     mvee::lock();
-    mvee::shutdown_signal            = SIGINT;
+    mvee::shutdown_signal = SIGINT;
     mvee::should_generate_backtraces = should_backtrace;
     mvee::unlock();
     pthread_cond_broadcast(&mvee::global_cond);
@@ -1110,15 +1112,15 @@ void mvee::shutdown(int sig, int should_backtrace)
      */
     mvee::lock();
     for (auto it : mvee::active_monitors)
-	{
+    {
         it->signal_shutdown();
-	}
+    }
     for (auto it : mvee::inactive_monitors)
-	{
+    {
         // no need to send SIGUSR1. This monitor is already waiting to be shut down
-		it->monitor_tid = 0; 
+        it->monitor_tid = 0;
         it->signal_shutdown();
-	}
+    }
     mvee::unlock();
 
     // wait for all monitors to terminate
@@ -1126,7 +1128,7 @@ void mvee::shutdown(int sig, int should_backtrace)
     {
         mvee::lock();
         if (mvee::active_monitors.size() == 0 &&
-			mvee::inactive_monitors.size() == 0)
+            mvee::inactive_monitors.size() == 0)
         {
             mvee::unlock();
             break;
@@ -1145,9 +1147,10 @@ void mvee::shutdown(int sig, int should_backtrace)
 -----------------------------------------------------------------------------*/
 void mvee::garbage_collect()
 {
-    std::vector<monitor*> local_gclist;
+    std::vector<monitor *> local_gclist;
 
-    {   MutexLock lock(&mvee::global_lock);
+    {
+        MutexLock lock(&mvee::global_lock);
 
         mvee::should_garbage_collect = false;
 
@@ -1159,7 +1162,7 @@ void mvee::garbage_collect()
             local_gclist.push_back(mon);
             mvee::dead_monitors.pop_back();
         }
-	}
+    }
 
     while (local_gclist.size() > 0)
     {
@@ -1168,8 +1171,8 @@ void mvee::garbage_collect()
         if (mvee::shutdown_signal == 0)
             mon->join_thread();
 
-        logf("garbage collected monitor: %d\n", 
-			 mon->monitorid);
+        logf("garbage collected monitor: %d\n",
+             mon->monitorid);
         SAFEDELETE(mon);
         local_gclist.pop_back();
     }
@@ -1180,8 +1183,8 @@ void mvee::garbage_collect()
 -----------------------------------------------------------------------------*/
 bool mvee::is_multiprocess()
 {
-    pid_t     prev_tgid = 0;
-    int       num_tgids = 0;
+    pid_t prev_tgid = 0;
+    int num_tgids = 0;
 
     MutexLock lock(&mvee::global_lock);
     for (auto it : mvee::active_monitors)
@@ -1202,32 +1205,31 @@ bool mvee::is_multiprocess()
 /*-----------------------------------------------------------------------------
     get_unavailable_cores
 -----------------------------------------------------------------------------*/
-std::set<int> mvee::get_unavailable_cores(int* most_recent_core)
+std::set<int> mvee::get_unavailable_cores(int *most_recent_core)
 {
-	std::set<int> result;
+    std::set<int> result;
 
     MutexLock lock(&mvee::global_lock);
 
     for (auto it : mvee::monitor_id_mapping)
-	{
-		int core = it.second->get_master_core();
+    {
+        int core = it.second->get_master_core();
 
-		if (core != -1)
-		{
-			debugf("cores [%d, %d] are currently in use by monitor %d\n",
-						core,
-						core + mvee::numvariants - 1,
-						it.second->monitorid);
+        if (core != -1)
+        {
+            debugf("cores [%d, %d] are currently in use by monitor %d\n",
+                   core,
+                   core + mvee::numvariants - 1,
+                   it.second->monitorid);
 
-			result.insert(core);
+            result.insert(core);
 
-			if (it.first == mvee::active_monitorid - 1
-				&& most_recent_core)
-				*most_recent_core = core;
-		}
-	}
+            if (it.first == mvee::active_monitorid - 1 && most_recent_core)
+                *most_recent_core = core;
+        }
+    }
 
-	return result;
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1254,13 +1256,13 @@ bool mvee::get_should_generate_backtraces()
 void mvee::set_should_generate_backtraces()
 {
     mvee::should_generate_backtraces = true;
-	__sync_synchronize();
+    __sync_synchronize();
 }
 
 /*-----------------------------------------------------------------------------
     add_detached_variant
 -----------------------------------------------------------------------------*/
-void mvee::add_detached_variant(detachedvariant* variant)
+void mvee::add_detached_variant(detachedvariant *variant)
 {
     MutexLock lock(&mvee::global_lock);
     mvee::detachlist.push_back(variant);
@@ -1269,18 +1271,18 @@ void mvee::add_detached_variant(detachedvariant* variant)
 /*-----------------------------------------------------------------------------
     remove_detached_variant - returns the variant that was removed
 -----------------------------------------------------------------------------*/
-detachedvariant* mvee::remove_detached_variant(pid_t variantpid)
+detachedvariant *mvee::remove_detached_variant(pid_t variantpid)
 {
     MutexLock lock(&mvee::global_lock);
 
-    for (std::vector<detachedvariant*>::iterator it = mvee::detachlist.begin();
+    for (std::vector<detachedvariant *>::iterator it = mvee::detachlist.begin();
          it != mvee::detachlist.end(); ++it)
     {
         if ((*it)->variantpid == variantpid)
         {
-            detachedvariant* variant = *it;
+            detachedvariant *variant = *it;
             mvee::detachlist.erase(it);
-			pthread_cond_broadcast(&mvee::global_cond);
+            pthread_cond_broadcast(&mvee::global_cond);
             return variant;
         }
     }
@@ -1292,11 +1294,11 @@ detachedvariant* mvee::remove_detached_variant(pid_t variantpid)
     have_detached_variants - checks whether the specified monitor has detached
     from processes that have not been attached to another monitor yet
 -----------------------------------------------------------------------------*/
-bool mvee::have_detached_variants(monitor* mon)
+bool mvee::have_detached_variants(monitor *mon)
 {
     MutexLock lock(&mvee::global_lock);
 
-    for (std::vector<detachedvariant*>::iterator it = mvee::detachlist.begin();
+    for (std::vector<detachedvariant *>::iterator it = mvee::detachlist.begin();
          it != mvee::detachlist.end(); ++it)
     {
         if ((*it)->parentmonitorid == mon->monitorid)
@@ -1310,13 +1312,13 @@ bool mvee::have_detached_variants(monitor* mon)
     have_pending_variants - counts the number of variants that are waiting to
     be attached to the specified monitor
 -----------------------------------------------------------------------------*/
-int mvee::have_pending_variants(monitor* mon)
+int mvee::have_pending_variants(monitor *mon)
 {
-    int       cnt = 0;
+    int cnt = 0;
 
     MutexLock lock(&mvee::global_lock);
 
-    for (std::vector<detachedvariant*>::iterator it = mvee::detachlist.begin();
+    for (std::vector<detachedvariant *>::iterator it = mvee::detachlist.begin();
          it != mvee::detachlist.end(); ++it)
     {
         if ((*it)->parent_has_detached && (*it)->new_monitor == mon)
@@ -1340,27 +1342,27 @@ void mvee::set_should_check_multithread_state(int monitorid)
 /*-----------------------------------------------------------------------------
     register_variants
 -----------------------------------------------------------------------------*/
-void mvee::register_variants(std::vector<pid_t>& pids)
+void mvee::register_variants(std::vector<pid_t> &pids)
 {
     MutexLock lock(&mvee::global_lock);
 
     for (int i = 0; i < mvee::numvariants; ++i)
     {
         mvee::variant_pid_mapping.erase(pids[i]);
-        mvee::variant_pid_mapping.insert(std::pair<pid_t, std::vector<pid_t> >(pids[i], pids));
+        mvee::variant_pid_mapping.insert(std::pair<pid_t, std::vector<pid_t>>(pids[i], pids));
     }
 }
 
 /*-----------------------------------------------------------------------------
     register_monitor
 -----------------------------------------------------------------------------*/
-void mvee::register_monitor(monitor* mon)
+void mvee::register_monitor(monitor *mon)
 {
     {
-		MutexLock lock(&mvee::global_lock);
-        mvee::monitor_id_mapping.insert(std::pair<int, monitor*>(mon->monitorid, mon));
-		mvee::active_monitors.push_back(mon);
-	}
+        MutexLock lock(&mvee::global_lock);
+        mvee::monitor_id_mapping.insert(std::pair<int, monitor *>(mon->monitorid, mon));
+        mvee::active_monitors.push_back(mon);
+    }
 
     mon->signal_registration();
 }
@@ -1368,32 +1370,32 @@ void mvee::register_monitor(monitor* mon)
 /*-----------------------------------------------------------------------------
     unregister_monitor
 -----------------------------------------------------------------------------*/
-void mvee::unregister_monitor(monitor* mon, bool move_to_dead_monitors)
+void mvee::unregister_monitor(monitor *mon, bool move_to_dead_monitors)
 {
     bool should_shutdown = false;
 
     {
-		MutexLock lock(&mvee::global_lock);
+        MutexLock lock(&mvee::global_lock);
         auto it = monitor_id_mapping.find(mon->monitorid);
         if (it != monitor_id_mapping.end())
             monitor_id_mapping.erase(it);
-		auto it2 = std::find(active_monitors.begin(), active_monitors.end(), mon);
-		if (it2 != active_monitors.end())
-			active_monitors.erase(it2);
+        auto it2 = std::find(active_monitors.begin(), active_monitors.end(), mon);
+        if (it2 != active_monitors.end())
+            active_monitors.erase(it2);
 
-		if (move_to_dead_monitors)
-		{
-			auto it3 = std::find(inactive_monitors.begin(), inactive_monitors.end(), mon);
-			if (it3 != inactive_monitors.end())
-				inactive_monitors.erase(it3);
+        if (move_to_dead_monitors)
+        {
+            auto it3 = std::find(inactive_monitors.begin(), inactive_monitors.end(), mon);
+            if (it3 != inactive_monitors.end())
+                inactive_monitors.erase(it3);
 
-			dead_monitors.push_back(mon);
-			should_garbage_collect = true;
-		}
-		else
-		{
-			inactive_monitors.push_back(mon);
-		}
+            dead_monitors.push_back(mon);
+            should_garbage_collect = true;
+        }
+        else
+        {
+            inactive_monitors.push_back(mon);
+        }
 
         if (active_monitors.size() <= 0)
             should_shutdown = true;
@@ -1402,7 +1404,7 @@ void mvee::unregister_monitor(monitor* mon, bool move_to_dead_monitors)
 
         if (mon == mvee::active_monitor)
             mvee::active_monitor = NULL;
-	}
+    }
 
     if (should_shutdown)
         mvee::request_shutdown(mvee::should_generate_backtraces);
@@ -1413,23 +1415,22 @@ void mvee::unregister_monitor(monitor* mon, bool move_to_dead_monitors)
 -----------------------------------------------------------------------------*/
 bool mvee::is_monitored_tgid(pid_t tgid)
 {
-	// never shut down if we still have detached variants
-	if (detachlist.size() > 0)
-		return true;
+    // never shut down if we still have detached variants
+    if (detachlist.size() > 0)
+        return true;
 
-	for (auto it : active_monitors)
-	{
-		for (int i = 0; i < mvee::numvariants; ++i)
-		{
-			if (it->variants[i].varianttgid == tgid &&
-				!it->variants[i].variant_terminated)
-				return true;
-		}
-	}
+    for (auto it : active_monitors)
+    {
+        for (int i = 0; i < mvee::numvariants; ++i)
+        {
+            if (it->variants[i].varianttgid == tgid &&
+                !it->variants[i].variant_terminated)
+                return true;
+        }
+    }
 
-	return false;
+    return false;
 }
-
 
 /*-----------------------------------------------------------------------------
     mvee_mon_external_backtrace_request - request backtraces when we shut down
@@ -1437,8 +1438,8 @@ bool mvee::is_monitored_tgid(pid_t tgid)
 -----------------------------------------------------------------------------*/
 void mvee_mon_external_backtrace_request(int sig)
 {
-	mvee::set_should_generate_backtraces();
-	mvee_mon_external_termination_request(sig);
+    mvee::set_should_generate_backtraces();
+    mvee_mon_external_termination_request(sig);
 }
 
 /*-----------------------------------------------------------------------------
@@ -1450,7 +1451,7 @@ void mvee_mon_external_termination_request(int sig)
     {
         printf("EXTERNAL TERMINATION REQUEST - MONITORID: %d\n", mvee::active_monitorid);
         if (!mvee::shutdown_signal)
-			mvee::request_shutdown(mvee::should_generate_backtraces);
+            mvee::request_shutdown(mvee::should_generate_backtraces);
         else
             exit(0);
     }
@@ -1470,16 +1471,16 @@ void mvee_mon_external_termination_request(int sig)
 -----------------------------------------------------------------------------*/
 void mvee::start_unmonitored()
 {
-    std::vector<int>   resumed(mvee::numvariants);
-    std::vector<int>   terminated(mvee::numvariants);
+    std::vector<int> resumed(mvee::numvariants);
+    std::vector<int> terminated(mvee::numvariants);
     std::vector<pid_t> pids(mvee::numvariants);
-    int                i;
+    int i;
 
     for (i = 0; i < mvee::numvariants; ++i)
     {
-        resumed[i]    = 0;
+        resumed[i] = 0;
         terminated[i] = 0;
-        pids[i]       = fork();
+        pids[i] = fork();
         if (pids[i] == 0)
             break;
     }
@@ -1487,13 +1488,13 @@ void mvee::start_unmonitored()
     if (i < mvee::numvariants)
     {
         mvee::setup_env(i);
-		// raise SIGSTOP so the monitor process can attach before we exec
+        // raise SIGSTOP so the monitor process can attach before we exec
         kill(getpid(), SIGSTOP);
-		start_variant(i);
+        start_variant(i);
     }
     else
     {
-        bool all_resumed    = false;
+        bool all_resumed = false;
         bool all_terminated = false;
 
         // In benchmark mode, initlogging just starts the timer...
@@ -1502,30 +1503,30 @@ void mvee::start_unmonitored()
         // Resume all variants
         while (!all_resumed)
         {
-			interaction::mvee_wait_status status;
+            interaction::mvee_wait_status status;
 
-			if (!interaction::wait(-1, status, false, false) ||
-				status.reason != STOP_SIGNAL ||
-				status.data != SIGSTOP)
-			{
-				warnf("Failed to wait for children - error: %s - status: %s\n",
-					  getTextualErrno(errno), getTextualMVEEWaitStatus(status).c_str());
-				exit(-1);
-				return;
-			}
-           
-			kill(status.pid, SIGCONT);
+            if (!interaction::wait(-1, status, false, false) ||
+                status.reason != STOP_SIGNAL ||
+                status.data != SIGSTOP)
+            {
+                warnf("Failed to wait for children - error: %s - status: %s\n",
+                      getTextualErrno(errno), getTextualMVEEWaitStatus(status).c_str());
+                exit(-1);
+                return;
+            }
 
-			for (i = 0; i < mvee::numvariants; ++i)
-				if (status.pid == pids[i])
-					resumed[i] = 1;
+            kill(status.pid, SIGCONT);
 
-			for (i = 0; i < mvee::numvariants; ++i)
-				if (!resumed[i])
-					break;
+            for (i = 0; i < mvee::numvariants; ++i)
+                if (status.pid == pids[i])
+                    resumed[i] = 1;
 
-			if (i >= mvee::numvariants)
-				all_resumed = true;
+            for (i = 0; i < mvee::numvariants; ++i)
+                if (!resumed[i])
+                    break;
+
+            if (i >= mvee::numvariants)
+                all_resumed = true;
         }
 
         for (i = 0; i < mvee::numvariants; ++i)
@@ -1535,18 +1536,18 @@ void mvee::start_unmonitored()
         // Now wait for all variants to terminate...
         while (!all_terminated)
         {
-			interaction::mvee_wait_status status;
+            interaction::mvee_wait_status status;
 
-			if (!interaction::wait(-1, status, false, false) ||
-				(status.reason != STOP_EXIT && 
-				 status.reason != STOP_SIGNAL))
-			{
-				warnf("Failed to wait for children - error: %s - status: %s\n",
-					  getTextualErrno(errno), 
-					  getTextualMVEEWaitStatus(status).c_str());
-				exit(-1);
-				return;
-			}
+            if (!interaction::wait(-1, status, false, false) ||
+                (status.reason != STOP_EXIT &&
+                 status.reason != STOP_SIGNAL))
+            {
+                warnf("Failed to wait for children - error: %s - status: %s\n",
+                      getTextualErrno(errno),
+                      getTextualMVEEWaitStatus(status).c_str());
+                exit(-1);
+                return;
+            }
 
             if (status.reason == STOP_EXIT)
             {
@@ -1561,8 +1562,8 @@ void mvee::start_unmonitored()
                 if (i >= mvee::numvariants)
                     all_terminated = true;
             }
-            else if (status.reason == STOP_SIGNAL && 
-					 status.data == SIGSTOP)
+            else if (status.reason == STOP_SIGNAL &&
+                     status.data == SIGSTOP)
             {
                 for (i = 0; i < mvee::numvariants; ++i)
                     if (status.pid == pids[i])
@@ -1600,9 +1601,9 @@ void mvee::start_unmonitored()
 -----------------------------------------------------------------------------*/
 void mvee::start_monitored()
 {
-    int                i;
+    int i;
     std::vector<pid_t> procs(mvee::numvariants);
-    sigset_t           set;
+    sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
@@ -1623,7 +1624,7 @@ void mvee::start_monitored()
         logf("======================================================\n");
         logf("\nTracing %d semantically equivalent variant processes...\n\n", mvee::numvariants);
 
-        sigset_t  set;
+        sigset_t set;
         sigemptyset(&set);
         sigaddset(&set, SIGINT);
         pthread_sigmask(SIG_UNBLOCK, &set, NULL);
@@ -1631,60 +1632,59 @@ void mvee::start_monitored()
         mvee::active_monitor = new monitor(procs);
 
         // Install signal handlers for SIGINT and SIGQUIT so we can shut down safely after CTRL+C
-		struct sigaction sigact;
-		sigact.sa_handler = mvee_mon_external_termination_request;
-		sigemptyset(&set);
-		sigact.sa_mask    = set;
-		sigact.sa_flags   = 0;
-		
-		sigaction(SIGINT, &sigact, nullptr);
-		sigaction(SIGQUIT, &sigact, nullptr);
-		
-		// Same thing but with backtraces
-		sigact.sa_handler = mvee_mon_external_backtrace_request;
-		sigaction(SIGUSR2, &sigact, nullptr);
+        struct sigaction sigact;
+        sigact.sa_handler = mvee_mon_external_termination_request;
+        sigemptyset(&set);
+        sigact.sa_mask = set;
+        sigact.sa_flags = 0;
+
+        sigaction(SIGINT, &sigact, nullptr);
+        sigaction(SIGQUIT, &sigact, nullptr);
+
+        // Same thing but with backtraces
+        sigact.sa_handler = mvee_mon_external_backtrace_request;
+        sigaction(SIGUSR2, &sigact, nullptr);
 
         for (int i = 0; i < mvee::numvariants; ++i)
         {
-			interaction::mvee_wait_status status;
+            interaction::mvee_wait_status status;
 
-			if (!interaction::wait(procs[i], status, false, false, false))
-			{
-				warnf("Failed to wait for children - errno: %s - status: %s\n",
-					  getTextualErrno(errno), getTextualMVEEWaitStatus(status).c_str());
-				exit(-1);
-				return;
-			}
+            if (!interaction::wait(procs[i], status, false, false, false))
+            {
+                warnf("Failed to wait for children - errno: %s - status: %s\n",
+                      getTextualErrno(errno), getTextualMVEEWaitStatus(status).c_str());
+                exit(-1);
+                return;
+            }
 
             if (status.reason == STOP_SIGNAL)
-				if (!interaction::detach(procs[i]))
-					warnf("Failed to detach from variant %d\n", i);
+                if (!interaction::detach(procs[i]))
+                    warnf("Failed to detach from variant %d\n", i);
         }
 
         mvee::register_monitor(mvee::active_monitor);
 
 #ifdef MVEE_FD_DEBUG
-        char      cmd[500];
+        char cmd[500];
         for (i = 0; i < mvee::numvariants; ++i)
         {
             sprintf(cmd, "ls -al /proc/%d/fd", procs[i]);
             logf("fd list for variant %d: \n", procs[i]);
             std::string str = mvee::log_read_from_proc_pipe(cmd, NULL);
-            logf("%s\n",                     str.c_str());
+            logf("%s\n", str.c_str());
         }
 #endif
-
 
 #ifdef MVEE_TASKSWITCH_OVERHEAD_BENCHMARK
         cpu_set_t cpu;
         CPU_ZERO(&cpu);
-        CPU_SET(5*2, &cpu);
+        CPU_SET(5 * 2, &cpu);
         if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu))
             warnf("couldn't set affinity\n");
 #endif
 
         // everything is set up and ready to go...
-        mvee::active_monitor   = NULL;
+        mvee::active_monitor = NULL;
         mvee::active_monitorid = -1;
         while (true)
         {
@@ -1717,30 +1717,195 @@ void mvee::start_monitored()
         if ((*mvee::config_variant_global)["intercept_tsc"].asBool())
             prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0);
 
+        // Define BPF-filter
+        struct sock_filter filter[] = {
+            // TODO: check magic value in r12 (p. 111 Adv. Tech. MVEE) -> SECCOMP_RET_KILL_PROCESS? if not correct, else resume filtering
+            // BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[12])),
+            // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, MAGIC_VALUE_FROM_MEMORY, 1, 0),
+            // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
+            // load system call number into accumulator
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpriority, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_nanosleep, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getrusage, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sysinfo, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_times, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_capget, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getitimer, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_futex, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettimeofday, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_time, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_clock_gettime, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sched_yield, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getcwd, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_access, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_faccessat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_stat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fstat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_lstat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_newfstatat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getdents, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlink, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readlinkat, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getxattr, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_lgetxattr, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fgetxattr, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_lseek, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_alarm, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_setitimer, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_timerfd_gettime, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_madvise, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fadvise64, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_read, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_pread64, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_readv, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_preadv, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_poll, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_select, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_timerfd_settime, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sync, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_fdatasync, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_syncfs, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_pwrite64, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_writev, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_pwritev, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_recvfrom, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_recvmsg, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_recvmmsg, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getsockname, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpeername, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getsockopt, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendto, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendmsg, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendmmsg, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sendfile, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_wait, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_epoll_ctl, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_shutdown, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_setsockopt, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ioctl, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            // TODO: Check if it is still needed here
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+        };
+
 #ifdef MVEE_TASKSWITCH_OVERHEAD_BENCHMARK
         cpu_set_t cpu;
         CPU_ZERO(&cpu);
-        CPU_SET(i*2, &cpu);
+        CPU_SET(i * 2, &cpu);
         if (sched_setaffinity(0, sizeof(cpu_set_t), &cpu))
             warnf("couldn't set affinity\n");
 #endif
 
-
         // Place the new variant under supervision of the main thread of the
-		// monitor process.
+        // monitor process.
         if (!interaction::accept_tracing())
-			fprintf(stderr, "Couldn't accept tracing\n");
+            fprintf(stderr, "Couldn't accept tracing\n");
+
+        // Set BPF-filter
+        struct sock_fprog prog = {
+            (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+            filter,
+        };
+
+        // Avoid the need for CAP_SYS_ADMIN
+        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+            warnf("Couldn't avoid the need for CAP_SYS_ADMIN\n");
 
         // Stop the variant so we can detach the main monitor thread.
         kill(getpid(), SIGSTOP);
 
-		// Wait in a busy loop while we wait for the designated monitor
-		// thread to attach
+        // Enable seccomp BPF-filtering
+        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+            warnf("Couldn't enable seccomp BPF-filtering\n");
+
+        // Wait in a busy loop while we wait for the designated monitor
+        // thread to attach
         while (!mvee::can_run)
             ;
 
-		// The monitor thread is now attached. It is now safe to execve
-		start_variant(i);
+        // The monitor thread is now attached. It is now safe to execve
+        start_variant(i);
     }
 }
 
@@ -1749,156 +1914,156 @@ void mvee::start_monitored()
 -----------------------------------------------------------------------------*/
 static void usage()
 {
-	printf("======================================================\n");
-	printf("   Ghent University Computer Systems Lab MVEE v4.0    \n");
-	printf("                 aka \"GHUMVEE\"                      \n");
-	printf("======================================================\n\n");
-	printf("Legacy Mode Syntax:\n");
-	printf("./MVEE [Builtin Configuration Number (see MVEE_config.cpp)] [MVEE Options]\n\n");
-	printf("RAVEN Mode Syntax:\n");
-	printf("./MVEE -s <variant set> -f <config file> [MVEE Options] -- [Program Args]\n\n");
-	printf("MVEE Options:\n");
-	printf("> -s <variant set> : run the specified variant set. If this option is omitted, GHUMVEE will launch variant set \"default\". NOTE: This option is ignored in legacy mode.\n");
-	printf("> -f <file name>   : use the monitor config in the specified file. If this option is omitted, the config will be read from MVEE.ini. NOTE: If the MVEE is run in legacy mode, then any options in the builtin config take precedence over the settings in the config file.\n");
-	printf("> -N <number of variants> : sets the number of variants. In RAVEN mode, this option can override the number of variants specified in the config file.\n");
-	printf("> -S <SyncTrace logfile name> : use SyncTrace to find uninstrumented accesses to synchronization variables. NOTE: monitoring is disabled and only a single variant is run.\n");
-	printf("> -n : no monitoring. Variant processes are executed without supervision. Useful for benchmarking.\n");
-	printf("> -p : use performance counters to track cache and synchronization behavior of the variants.\n");
-	printf("> -o : log everything to stdout, as well as the log files. This flag is ignored if the MVEE is compiled with MVEE_BENCHMARK defined in MVEE_build_config.h\n");
-	printf("> -c : show the contents of the json config file after command line processing.\n");
-	printf("> In legacy mode, all arguments including and following the first non-option are passed as program arguments to the variants\n");
+    printf("======================================================\n");
+    printf("   Ghent University Computer Systems Lab MVEE v4.0    \n");
+    printf("                 aka \"GHUMVEE\"                      \n");
+    printf("======================================================\n\n");
+    printf("Legacy Mode Syntax:\n");
+    printf("./MVEE [Builtin Configuration Number (see MVEE_config.cpp)] [MVEE Options]\n\n");
+    printf("RAVEN Mode Syntax:\n");
+    printf("./MVEE -s <variant set> -f <config file> [MVEE Options] -- [Program Args]\n\n");
+    printf("MVEE Options:\n");
+    printf("> -s <variant set> : run the specified variant set. If this option is omitted, GHUMVEE will launch variant set \"default\". NOTE: This option is ignored in legacy mode.\n");
+    printf("> -f <file name>   : use the monitor config in the specified file. If this option is omitted, the config will be read from MVEE.ini. NOTE: If the MVEE is run in legacy mode, then any options in the builtin config take precedence over the settings in the config file.\n");
+    printf("> -N <number of variants> : sets the number of variants. In RAVEN mode, this option can override the number of variants specified in the config file.\n");
+    printf("> -S <SyncTrace logfile name> : use SyncTrace to find uninstrumented accesses to synchronization variables. NOTE: monitoring is disabled and only a single variant is run.\n");
+    printf("> -n : no monitoring. Variant processes are executed without supervision. Useful for benchmarking.\n");
+    printf("> -p : use performance counters to track cache and synchronization behavior of the variants.\n");
+    printf("> -o : log everything to stdout, as well as the log files. This flag is ignored if the MVEE is compiled with MVEE_BENCHMARK defined in MVEE_build_config.h\n");
+    printf("> -c : show the contents of the json config file after command line processing.\n");
+    printf("> In legacy mode, all arguments including and following the first non-option are passed as program arguments to the variants\n");
 }
 
 /*-----------------------------------------------------------------------------
     add_argv
 -----------------------------------------------------------------------------*/
-void mvee::add_argv(const char* arg, bool first_extra_arg)
+void mvee::add_argv(const char *arg, bool first_extra_arg)
 {
-	bool merge_extra_args = 
-		!(*mvee::config_variant_global)["merge_extra_args"].isNull() &&
-		(*mvee::config_variant_global)["merge_extra_args"].asBool();
+    bool merge_extra_args =
+        !(*mvee::config_variant_global)["merge_extra_args"].isNull() &&
+        (*mvee::config_variant_global)["merge_extra_args"].asBool();
 
-	// Add to global exec arguments
-	if (!(*mvee::config_variant_exec)["argv"])
-		(*mvee::config_variant_exec)["argv"][0] = std::string(arg);
-	else if (!merge_extra_args || first_extra_arg)
-		(*mvee::config_variant_exec)["argv"].append(std::string(arg));
-	else
-	{
-		auto str = (*mvee::config_variant_exec)["argv"][(*mvee::config_variant_exec)["argv"].size() - 1].asCString();
-		std::stringstream ss;
-		ss << str << " " << arg;
-		(*mvee::config_variant_exec)["argv"][(*mvee::config_variant_exec)["argv"].size() - 1] = ss.str();
-	}
+    // Add to global exec arguments
+    if (!(*mvee::config_variant_exec)["argv"])
+        (*mvee::config_variant_exec)["argv"][0] = std::string(arg);
+    else if (!merge_extra_args || first_extra_arg)
+        (*mvee::config_variant_exec)["argv"].append(std::string(arg));
+    else
+    {
+        auto str = (*mvee::config_variant_exec)["argv"][(*mvee::config_variant_exec)["argv"].size() - 1].asCString();
+        std::stringstream ss;
+        ss << str << " " << arg;
+        (*mvee::config_variant_exec)["argv"][(*mvee::config_variant_exec)["argv"].size() - 1] = ss.str();
+    }
 
-	for (auto variant_spec : mvee::config["variant"]["specs"])
-	{
-		if (!variant_spec["argv"])
-			variant_spec["argv"][0] = std::string(arg);
-		else if (!merge_extra_args || first_extra_arg)
-			variant_spec["argv"].append(std::string(arg));
-		else
-		{
-			auto str = (variant_spec)["argv"][(variant_spec)["argv"].size() - 1].asCString();
-			std::stringstream ss;
-			ss << str << " " << arg;
-			(variant_spec)["argv"][(variant_spec)["argv"].size() - 1] = ss.str();
-		}
-	}
+    for (auto variant_spec : mvee::config["variant"]["specs"])
+    {
+        if (!variant_spec["argv"])
+            variant_spec["argv"][0] = std::string(arg);
+        else if (!merge_extra_args || first_extra_arg)
+            variant_spec["argv"].append(std::string(arg));
+        else
+        {
+            auto str = (variant_spec)["argv"][(variant_spec)["argv"].size() - 1].asCString();
+            std::stringstream ss;
+            ss << str << " " << arg;
+            (variant_spec)["argv"][(variant_spec)["argv"].size() - 1] = ss.str();
+        }
+    }
 }
 
 /*-----------------------------------------------------------------------------
     process_opts
 -----------------------------------------------------------------------------*/
-bool mvee::process_opts(int argc, char** argv, bool add_args)
+bool mvee::process_opts(int argc, char **argv, bool add_args)
 {
-	int opt;
-	bool stop = false;
-	while ((opt = getopt(argc, argv, ":s:f:N:npocS:")) != -1 && !stop)
-	{
-		switch(opt)
-		{
-			case ':': // missing arg
-				if (!strcmp(argv[optind+1], "--"))
-				{
-					stop = true;
-					break;
-				}
-				else
-				{
-					usage();
-					return false;
-				}
-			case 'S':
-#ifndef SYNCTRACE_LIB
-                printf("No SyncTrace support available! Install DynamoRIO.\n");
+    int opt;
+    bool stop = false;
+    while ((opt = getopt(argc, argv, ":s:f:N:npocS:")) != -1 && !stop)
+    {
+        switch (opt)
+        {
+        case ':': // missing arg
+            if (!strcmp(argv[optind + 1], "--"))
+            {
+                stop = true;
+                break;
+            }
+            else
+            {
                 usage();
                 return false;
+            }
+        case 'S':
+#ifndef SYNCTRACE_LIB
+            printf("No SyncTrace support available! Install DynamoRIO.\n");
+            usage();
+            return false;
 #else
-				mvee::synctrace_logfile = std::string(optarg);
-				mvee::numvariants = 1;
-				(*mvee::config_variant_global)["disable_syscall_checks"] = true;
-				break;
+            mvee::synctrace_logfile = std::string(optarg);
+            mvee::numvariants = 1;
+            (*mvee::config_variant_global)["disable_syscall_checks"] = true;
+            break;
 #endif
-			case 's':
-				mvee::config_variant_set = std::string(optarg);
-				break;
-			case 'o':
-				(*mvee::config_monitor)["log_to_stdout"] = true;
-				break;
-			case 'N':
+        case 's':
+            mvee::config_variant_set = std::string(optarg);
+            break;
+        case 'o':
+            (*mvee::config_monitor)["log_to_stdout"] = true;
+            break;
+        case 'N':
 #ifdef MVEE_SHARED_MEMORY_INSTRUCTION_LOGGING
-                printf("shared memory logging option only available when running single variant, "
-                       "-N should be omitted.\n");
-                return false;
+            printf("shared memory logging option only available when running single variant, "
+                   "-N should be omitted.\n");
+            return false;
 #else
-                mvee::numvariants = strtoll(optarg, NULL, 10);
-                break;
+            mvee::numvariants = strtoll(optarg, NULL, 10);
+            break;
 #endif
-			case 'n':
-				(*mvee::config_variant_global)["disable_syscall_checks"] = true;
-				break;
-			case 'p':
-				(*mvee::config_variant_global)["performance_counting_enabled"] = true;
-				break;
-			case 'f': // we've already parsed the config file name
-				break;
-			case 'c':
-				mvee::config_show = true;
-				break;
-			default:
-				stop = true;
-				break;				
-		}
-	}
+        case 'n':
+            (*mvee::config_variant_global)["disable_syscall_checks"] = true;
+            break;
+        case 'p':
+            (*mvee::config_variant_global)["performance_counting_enabled"] = true;
+            break;
+        case 'f': // we've already parsed the config file name
+            break;
+        case 'c':
+            mvee::config_show = true;
+            break;
+        default:
+            stop = true;
+            break;
+        }
+    }
 
-	if (add_args)
-	{
-		bool first_extra_arg = true;
+    if (add_args)
+    {
+        bool first_extra_arg = true;
 
-		for (int i = optind; i < argc; ++i)
-		{			
-			add_argv(argv[i], first_extra_arg);
-			first_extra_arg = false;
-		}
-	}
+        for (int i = optind; i < argc; ++i)
+        {
+            add_argv(argv[i], first_extra_arg);
+            first_extra_arg = false;
+        }
+    }
 
-	return true;
+    return true;
 }
 
 /*-----------------------------------------------------------------------------
     isnumeric
 -----------------------------------------------------------------------------*/
-static bool isnumeric(const char* str)
+static bool isnumeric(const char *str)
 {
-	while(*str)
-	{
-		char c = *str;
-		if (c < '0' || c > '9')
-			return false;
-		str++;
-	}
-	return true;
+    while (*str)
+    {
+        char c = *str;
+        if (c < '0' || c > '9')
+            return false;
+        str++;
+    }
+    return true;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1906,12 +2071,12 @@ static bool isnumeric(const char* str)
 -----------------------------------------------------------------------------*/
 int main(int argc, char *argv[])
 {
-	bool legacy_mode = true;
+    bool legacy_mode = true;
 
     if (argc <= 2)
     {
-		usage();
-		return 0;
+        usage();
+        return 0;
     }
     else
     {
@@ -1920,184 +2085,184 @@ int main(int argc, char *argv[])
         mvee::numvariants = 1;
 #endif
 
-		mvee::os_check_ptrace_scope();
-		mvee::os_check_kernel_cmdline();
-		mvee::init_syslocks();
-		
+        mvee::os_check_ptrace_scope();
+        mvee::os_check_kernel_cmdline();
+        mvee::init_syslocks();
+
         int dash_pos, i = 1, builtin = 0;
 
-		// Determine the mode we're launching in
+        // Determine the mode we're launching in
         for (dash_pos = 0; dash_pos < argc; ++dash_pos)
         {
             if (!strcmp(argv[dash_pos], "--"))
             {
-				legacy_mode = false;
+                legacy_mode = false;
                 break;
             }
         }
 
-		// look for -f first and initialize the config
-		i = legacy_mode ? 2 : 1;
-		for (; i < argc; ++i)
-		{
-			if (!strcmp(argv[i], "-f"))
-			{
-				if (i + 1 < argc)
-					mvee::config_file_name = std::string(argv[i + 1]);
-				else
-					warnf("You must pass a filename after -f! Using MVEE.ini instead.\n");
-				break;
-			}
-		}
-	   
-		// Use default MVEE.ini if needed
-		if (mvee::config_file_name.size() == 0)
-		{
-			char path[1024];
-			memset(path, 0, 1024);
+        // look for -f first and initialize the config
+        i = legacy_mode ? 2 : 1;
+        for (; i < argc; ++i)
+        {
+            if (!strcmp(argv[i], "-f"))
+            {
+                if (i + 1 < argc)
+                    mvee::config_file_name = std::string(argv[i + 1]);
+                else
+                    warnf("You must pass a filename after -f! Using MVEE.ini instead.\n");
+                break;
+            }
+        }
 
-			if (readlink("/proc/self/exe", path, 1024) > 0)
-			{
-				std::string str(path);
-				if (str.rfind("/") != std::string::npos)
-					mvee::config_file_name = str.substr(0, str.rfind("/") + 1) + "MVEE.ini";
-				else
-					mvee::config_file_name = "MVEE.ini";
-			}
-		}		
+        // Use default MVEE.ini if needed
+        if (mvee::config_file_name.size() == 0)
+        {
+            char path[1024];
+            memset(path, 0, 1024);
 
-		// Initialize the config before processing further cmdline options
-		mvee::init_config();
-		mvee::os_get_orig_working_dir();
-		mvee::os_get_mvee_root_dir();
-		mvee::os_reset_envp();
+            if (readlink("/proc/self/exe", path, 1024) > 0)
+            {
+                std::string str(path);
+                if (str.rfind("/") != std::string::npos)
+                    mvee::config_file_name = str.substr(0, str.rfind("/") + 1) + "MVEE.ini";
+                else
+                    mvee::config_file_name = "MVEE.ini";
+            }
+        }
+
+        // Initialize the config before processing further cmdline options
+        mvee::init_config();
+        mvee::os_get_orig_working_dir();
+        mvee::os_get_mvee_root_dir();
+        mvee::os_reset_envp();
 
         if (!legacy_mode)
         {
-			// process all options before the --
-			if (!mvee::process_opts(argc, argv, false))
-				return -1;
-			
-			bool first_extra_arg = true;
+            // process all options before the --
+            if (!mvee::process_opts(argc, argv, false))
+                return -1;
+
+            bool first_extra_arg = true;
 #ifdef SYNCTRACE_LIB
-			if (!mvee::synctrace_logfile.empty())
-			{
-				mvee::add_argv(DYNAMORIO_DIR "/bin64/drrun", true);
-				mvee::add_argv("-c", false);
-				mvee::add_argv(SYNCTRACE_LIB, false);
-				mvee::add_argv("--log_file", false);
-				mvee::add_argv(mvee::synctrace_logfile.c_str(), false);
-				mvee::add_argv("--", false);
-				first_extra_arg = false;
-			}
+            if (!mvee::synctrace_logfile.empty())
+            {
+                mvee::add_argv(DYNAMORIO_DIR "/bin64/drrun", true);
+                mvee::add_argv("-c", false);
+                mvee::add_argv(SYNCTRACE_LIB, false);
+                mvee::add_argv("--log_file", false);
+                mvee::add_argv(mvee::synctrace_logfile.c_str(), false);
+                mvee::add_argv("--", false);
+                first_extra_arg = false;
+            }
 #endif
-			// Process everything after the "--" as program arguments
+            // Process everything after the "--" as program arguments
             for (i = dash_pos + 1; i < argc; ++i)
-			{
-				mvee::add_argv(argv[i], first_extra_arg);
-				first_extra_arg = false;
-			}
+            {
+                mvee::add_argv(argv[i], first_extra_arg);
+                first_extra_arg = false;
+            }
         }
         else
         {
-			if (!isnumeric(argv[1]))
-			{
-				usage();
-				return -1;
-			}
+            if (!isnumeric(argv[1]))
+            {
+                usage();
+                return -1;
+            }
 
-			// discard any conflicting args we may have read from the config
-			mvee::config["variant"]["sets"].clear();
-			mvee::config["variant"]["specs"].clear();
-			if (!(*mvee::config_variant_exec)["path"].isNull() &&
-				(*mvee::config_variant_exec)["path"].isArray()) // it shouldn't be, but who knows...
-				(*mvee::config_variant_exec)["path"];
-			if (!(*mvee::config_variant_exec)["argv"].isNull() &&
-				(*mvee::config_variant_exec)["argv"].isArray())
-				(*mvee::config_variant_exec)["argv"].clear();
-			if (!(*mvee::config_variant_exec)["env"].isNull() &&
-				(*mvee::config_variant_exec)["env"].isArray())
-				(*mvee::config_variant_exec)["env"].clear();
-			
-			builtin = atoi(argv[1]);
+            // discard any conflicting args we may have read from the config
+            mvee::config["variant"]["sets"].clear();
+            mvee::config["variant"]["specs"].clear();
+            if (!(*mvee::config_variant_exec)["path"].isNull() &&
+                (*mvee::config_variant_exec)["path"].isArray()) // it shouldn't be, but who knows...
+                (*mvee::config_variant_exec)["path"];
+            if (!(*mvee::config_variant_exec)["argv"].isNull() &&
+                (*mvee::config_variant_exec)["argv"].isArray())
+                (*mvee::config_variant_exec)["argv"].clear();
+            if (!(*mvee::config_variant_exec)["env"].isNull() &&
+                (*mvee::config_variant_exec)["env"].isArray())
+                (*mvee::config_variant_exec)["env"].clear();
 
-			// Pretend that argv[1] is the new argv[0]
-			if (!mvee::process_opts(argc - 1, &argv[1], true))
-				return -1;
+            builtin = atoi(argv[1]);
 
-			mvee::set_builtin_config(builtin);
+            // Pretend that argv[1] is the new argv[0]
+            if (!mvee::process_opts(argc - 1, &argv[1], true))
+                return -1;
+
+            mvee::set_builtin_config(builtin);
         }
     }
 
-	// select variants
-	if (!legacy_mode)
-	{
-		if (!mvee::config["variant"]["sets"][mvee::config_variant_set])
-		{
-			printf("Couldn't find variant set %s\n", mvee::config_variant_set.c_str());
-			return -1;
-		}
+    // select variants
+    if (!legacy_mode)
+    {
+        if (!mvee::config["variant"]["sets"][mvee::config_variant_set])
+        {
+            printf("Couldn't find variant set %s\n", mvee::config_variant_set.c_str());
+            return -1;
+        }
 
-		int limit = mvee::numvariants ? mvee::numvariants : mvee::config["variant"]["sets"][mvee::config_variant_set].size(), i = 0;
-		auto it = mvee::config["variant"]["sets"][mvee::config_variant_set].begin();
-		for (; i < limit; ++i)
-		{
-			if (it == mvee::config["variant"]["sets"][mvee::config_variant_set].end())
-				it = mvee::config["variant"]["sets"][mvee::config_variant_set].begin();
+        int limit = mvee::numvariants ? mvee::numvariants : mvee::config["variant"]["sets"][mvee::config_variant_set].size(), i = 0;
+        auto it = mvee::config["variant"]["sets"][mvee::config_variant_set].begin();
+        for (; i < limit; ++i)
+        {
+            if (it == mvee::config["variant"]["sets"][mvee::config_variant_set].end())
+                it = mvee::config["variant"]["sets"][mvee::config_variant_set].begin();
 
-			if (it == mvee::config["variant"]["sets"][mvee::config_variant_set].end())
-				break;
+            if (it == mvee::config["variant"]["sets"][mvee::config_variant_set].end())
+                break;
 
-			auto variant = *it;
+            auto variant = *it;
 
-			// check if a variant.specs config exists for the specified variant
-			if (!mvee::config["variant"]["specs"][variant.asString()])
-			{
-				printf("Couldn't find config for variant %s in set %s\n",
-					   variant.asString().c_str(), mvee::config_variant_set.c_str());
-				return -1;
-			}
-			mvee::variant_ids.push_back(variant.asString());
+            // check if a variant.specs config exists for the specified variant
+            if (!mvee::config["variant"]["specs"][variant.asString()])
+            {
+                printf("Couldn't find config for variant %s in set %s\n",
+                       variant.asString().c_str(), mvee::config_variant_set.c_str());
+                return -1;
+            }
+            mvee::variant_ids.push_back(variant.asString());
 
-			it++;
-		}
+            it++;
+        }
 
-		mvee::numvariants = mvee::variant_ids.size();
-	}
-	else
-	{
-		// initialize variant ids
-		if (mvee::numvariants != 0)
-		{
-			mvee::variant_ids.resize(mvee::numvariants);
-			std::fill(mvee::variant_ids.begin(), mvee::variant_ids.end(), "null");
-		}
-	}
+        mvee::numvariants = mvee::variant_ids.size();
+    }
+    else
+    {
+        // initialize variant ids
+        if (mvee::numvariants != 0)
+        {
+            mvee::variant_ids.resize(mvee::numvariants);
+            std::fill(mvee::variant_ids.begin(), mvee::variant_ids.end(), "null");
+        }
+    }
 
-	if (mvee::numvariants <= 0)
-	{
-		printf("Can't run GHUMVEE with %d variants!\n", mvee::numvariants);
-		usage();
-		return -1;
-	}
+    if (mvee::numvariants <= 0)
+    {
+        printf("Can't run GHUMVEE with %d variants!\n", mvee::numvariants);
+        usage();
+        return -1;
+    }
 
 #ifdef MVEE_SHARED_MEMORY_INSTRUCTION_LOGGING
-	if (mvee::numvariants != 1)
+    if (mvee::numvariants != 1)
     {
-	    printf("to run instruction tracing it is required to run only 1 variant.\n");
-	    usage();
+        printf("to run instruction tracing it is required to run only 1 variant.\n");
+        usage();
         return -1;
     }
 #endif
 
-	// Everything is set up so we can initialize the alias maps now
-	mvee::init_aliases();
-	
-	if (mvee::config_show)
-	{
-		Json::StyledWriter writer;
-		std::cout << "Using config: " << writer.write(mvee::config) << "\n";
-	}
+    // Everything is set up so we can initialize the alias maps now
+    mvee::init_aliases();
+
+    if (mvee::config_show)
+    {
+        Json::StyledWriter writer;
+        std::cout << "Using config: " << writer.write(mvee::config) << "\n";
+    }
 
     if ((*mvee::config_variant_global)["disable_syscall_checks"].asBool())
         mvee::start_unmonitored();
@@ -2111,73 +2276,75 @@ int main(int argc, char *argv[])
 // =====================================================================================================================
 // static init
 // =====================================================================================================================
-pthread_mutex_t mvee::tracing_lock           = PTHREAD_MUTEX_INITIALIZER;
-tracing_data_t* mvee::instruction_log_result = nullptr;
-tracing_lost_t* mvee::instruction_log_lost   = nullptr;
-FILE*           mvee::instruction_log        = nullptr;
+pthread_mutex_t mvee::tracing_lock = PTHREAD_MUTEX_INITIALIZER;
+tracing_data_t *mvee::instruction_log_result = nullptr;
+tracing_lost_t *mvee::instruction_log_lost = nullptr;
+FILE *mvee::instruction_log = nullptr;
 
-void            mvee::tracing_cleanup                 ()
+void mvee::tracing_cleanup()
 {
-    tracing_data_t* temp_data;
-    tracing_data_t::prefixes_t* data_prefixes;
-    tracing_data_t::prefixes_t* temp_data_prefixes;
-    tracing_data_t::modrm_t* data_modrm;
-    tracing_data_t::modrm_t* temp_data_modrm;
-    tracing_data_t::immediate_t* data_immediate;
-    tracing_data_t::immediate_t* temp_data_immediate;
-    tracing_data_t::files_t* data_files;
-    tracing_data_t::files_t* temp_data_files;
+    tracing_data_t *temp_data;
+    tracing_data_t::prefixes_t *data_prefixes;
+    tracing_data_t::prefixes_t *temp_data_prefixes;
+    tracing_data_t::modrm_t *data_modrm;
+    tracing_data_t::modrm_t *temp_data_modrm;
+    tracing_data_t::immediate_t *data_immediate;
+    tracing_data_t::immediate_t *temp_data_immediate;
+    tracing_data_t::files_t *data_files;
+    tracing_data_t::files_t *temp_data_files;
 
     while (instruction_log_result)
     {
         data_prefixes = instruction_log_result->prefixes.next;
-        while (data_prefixes) {
+        while (data_prefixes)
+        {
             temp_data_prefixes = data_prefixes;
             data_prefixes = data_prefixes->next;
             free(temp_data_prefixes);
         }
 
         data_modrm = instruction_log_result->modrm.next;
-        while (data_modrm) {
+        while (data_modrm)
+        {
             temp_data_modrm = data_modrm;
             data_modrm = data_modrm->next;
             free(temp_data_modrm);
         }
 
         data_immediate = instruction_log_result->immediate.next;
-        while (data_immediate) {
+        while (data_immediate)
+        {
             temp_data_immediate = data_immediate;
             data_immediate = data_immediate->next;
             free(temp_data_immediate);
         }
 
         data_files = instruction_log_result->files_accessed.next;
-        while (data_files) {
+        while (data_files)
+        {
             temp_data_files = data_files;
             data_files = data_files->next;
             free(temp_data_files);
         }
-
 
         temp_data = instruction_log_result;
         instruction_log_result = instruction_log_result->next;
         free(temp_data);
     }
 
-
-    tracing_lost_t* temp_lost;
-    tracing_lost_t::files_t* lost_files;
-    tracing_lost_t::files_t* temp_lost_files;
+    tracing_lost_t *temp_lost;
+    tracing_lost_t::files_t *lost_files;
+    tracing_lost_t::files_t *temp_lost_files;
 
     while (instruction_log_lost)
     {
         lost_files = instruction_log_lost->files_accessed.next;
-        while (lost_files) {
+        while (lost_files)
+        {
             temp_lost_files = lost_files;
             lost_files = lost_files->next;
             free(temp_lost_files);
         }
-
 
         temp_lost = instruction_log_lost;
         instruction_log_lost = instruction_log_lost->next;

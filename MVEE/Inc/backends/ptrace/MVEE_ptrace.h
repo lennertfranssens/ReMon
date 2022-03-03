@@ -177,7 +177,8 @@ namespace interaction
 		if (ptrace(PTRACE_SETOPTIONS, variantpid, 0, 
 				   (void*)(PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
 						   PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC |
-						   PTRACE_O_TRACESYSGOOD | PTRACE_O_EXITKILL)) == 0)
+						   PTRACE_O_TRACESYSGOOD | PTRACE_O_EXITKILL|
+						   PTRACE_O_TRACESECCOMP )) == 0)
 			return true;
 		return false;
 	}
@@ -288,6 +289,10 @@ namespace interaction
 						else if (event == PTRACE_EVENT_EXEC)
 						{
 							status.reason = STOP_EXECVE;
+						}
+						else if (event == PTRACE_EVENT_SECCOMP)
+						{
+							status.reason = STOP_SYSCALL;
 						}
 						break;
 					}
