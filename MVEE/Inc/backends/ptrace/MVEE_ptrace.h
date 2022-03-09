@@ -93,6 +93,8 @@ namespace interaction
 	//
 	static bool resume_until_syscall (pid_t variantpid, int pending_signal_to_be_delivered=0)
 	{
+		// LF: TODO: Find where this is called to only call this when going from state seccomp_stop to ptrace_exit_stop. Resume when going the other way.
+		debugf("INFO: Calling resume_unitl_syscall\n");
         if (ptrace(PTRACE_SYSCALL, variantpid, 0, (void*) (long) pending_signal_to_be_delivered) == 0)
 			return true;
 		return false;
@@ -265,39 +267,51 @@ namespace interaction
 				{
 					case SIGSYSTRAP:
 					{
+						debugf("INFO: status.data = SIGSYSTRAP\n");
 						status.reason = STOP_SYSCALL;
 						break;
 					}
 					case SIGTRAP:
 					{
+						debugf("INFO: status.data = SIGTRAP\n");
 						int event = ((ret & 0x000F0000) >> 16);
 						if (event == PTRACE_EVENT_FORK || 
 							event == PTRACE_EVENT_VFORK ||
 							event == PTRACE_EVENT_CLONE)
 						{
+							debugf("INFO: Event == PTRACE_EVENT_FORK || PTRACE_EVENT_VFORK || PTRACE_EVENT_CLONE\n");
 							status.reason = STOP_FORK;
 							if (ptrace(PTRACE_GETEVENTMSG,
 									   status.pid, 0, &status.data) == 0)
 							{
+								debugf("INFO: Valid event message with value = %lu\n", status.data);
 								status.data = status.data & 0xFFFFFFFF;
 							}
 							else
 							{
+								debugf("INFO: No valid event message\n");
 								return false;
 							}
 						}
 						else if (event == PTRACE_EVENT_EXEC)
 						{
+							debugf("INFO: Event = PTRACE_EVENT_EXEC\n");
 							status.reason = STOP_EXECVE;
 						}
 						else if (event == PTRACE_EVENT_SECCOMP)
 						{
+							debugf("INFO: Event = PTRACE_EVENT_SECCOMP\n");
 							status.reason = STOP_SYSCALL;
+							if (ptrace(PTRACE_GETEVENTMSG, status.pid, 0, &status.data) == 0)
+							{
+								debugf("INFO: Return value of seccomp-bpf filter (SECCOMP_RET_DATA) = %lu\n", status.data);
+							}
 						}
 						break;
 					}
 					default:
 					{
+						debugf("INFO: status.data = ?, going default\n");
 						status.reason = STOP_SIGNAL;
 						break;
 					}

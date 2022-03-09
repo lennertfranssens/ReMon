@@ -11,6 +11,8 @@
 #include <sys/mman.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/ptrace.h>
+#include <sys/types.h>
 #include <signal.h>
 #include <string.h>
 #include <sstream>
@@ -1127,24 +1129,32 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
         return;
     }
 
+    __ptrace_syscall_info syscall_info{};
+    ptrace(PTRACE_GET_SYSCALL_INFO, variants[index].variantpid, sizeof(syscall_info), &syscall_info);
+    debugf("INFO: syscall_info = %hhu\t\t(PTRACE_SYSCALL_INFO_ENTRY = %hhu, PTRACE_SYSCALL_INFO_EXIT = %hhu, PTRACE_SYSCALL_INFO_SECCOMP = %hhu)\n", syscall_info.op, PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP);
+
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
     {
+        debugf("INFO: status.reason = STOP_EXIT\n");
         handle_exit_event(index);
         return;
     }
     else if (status.reason == STOP_SYSCALL)
 	{
+        debugf("INFO: status.reason = STOP_SYSCALL\n");
 		handle_syscall_event(index);
 		return;
 	}
 	else if (status.reason == STOP_FORK)
 	{
+        debugf("INFO: status.reason = STOP_FORK\n");
 		handle_fork_event(index, status);
 		return;
 	}
 	else if (status.reason == STOP_SIGNAL)
 	{
+        debugf("INFO: status.reason = STOP_SIGNAL\n");
 		if (status.data == SIGTRAP)
 		{
 			handle_trap_event(index);
@@ -1172,6 +1182,7 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	}
 	else if (status.reason == STOP_EXECVE)
 	{
+        debugf("INFO: status.reason = STOP_EXECVE\n");
 		call_resume(index);
 		return;
 	}

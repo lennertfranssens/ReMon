@@ -1725,7 +1725,7 @@ void mvee::start_monitored()
             // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
             // load system call number into accumulator
             BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+            /*BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpriority, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -1865,7 +1865,9 @@ void mvee::start_monitored()
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
             // TODO: Check if it is still needed here
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),*/
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
         };
 
@@ -1895,14 +1897,18 @@ void mvee::start_monitored()
         // Stop the variant so we can detach the main monitor thread.
         kill(getpid(), SIGSTOP);
 
-        // Enable seccomp BPF-filtering
-        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
-            warnf("Couldn't enable seccomp BPF-filtering\n");
-
         // Wait in a busy loop while we wait for the designated monitor
         // thread to attach
         while (!mvee::can_run)
             ;
+        
+        // Enable seccomp BPF-filtering
+        //if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+        if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
+        {
+            perror("ERROR");
+            warnf("Couldn't enable seccomp BPF-filtering\n");
+        }
 
         // The monitor thread is now attached. It is now safe to execve
         start_variant(i);

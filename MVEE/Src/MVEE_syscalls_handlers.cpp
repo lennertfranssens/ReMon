@@ -6983,10 +6983,11 @@ CALL(prctl)
 			delete[] ipmon_mask;
 		}
 	}
-	else if (ARG1(0) == PR_SET_SECCOMP && ARG2(0) == SECCOMP_MODE_FILTER)
+	// LF: We are using seccomp now
+	/*else if (ARG1(0) == PR_SET_SECCOMP && ARG2(0) == SECCOMP_MODE_FILTER)
 	{
 		return MVEE_CALL_DENY | MVEE_CALL_RETURN_ERROR(EINVAL);
-	}
+	}*/
     return MVEE_CALL_ALLOW;
 }
 
@@ -11342,8 +11343,9 @@ CALL(seccomp)
 {
 	// Unless the program is GHUMVEE-aware, these filters will not work
 	// well. We'll just pretend like the kernel doesn't support seccomp-filtering
-	if (ARG1(0) == SECCOMP_SET_MODE_FILTER)
-		return MVEE_CALL_DENY | MVEE_CALL_RETURN_ERROR(EINVAL);
+	// LF: We are using seccomp now
+	/*if (ARG1(0) == SECCOMP_SET_MODE_FILTER)
+		return MVEE_CALL_DENY | MVEE_CALL_RETURN_ERROR(EINVAL);*/
 	return MVEE_CALL_ALLOW;	
 }
 #endif
