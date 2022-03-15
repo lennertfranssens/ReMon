@@ -1717,6 +1717,7 @@ void mvee::start_monitored()
         if ((*mvee::config_variant_global)["intercept_tsc"].asBool())
             prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0);
 
+#ifdef USE_IPMON
         // Define BPF-filter
         struct sock_filter filter[] = {
             // TODO: check magic value in r12 (p. 111 Adv. Tech. MVEE) -> SECCOMP_RET_KILL_PROCESS? if not correct, else resume filtering
@@ -1725,7 +1726,7 @@ void mvee::start_monitored()
             // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
             // load system call number into accumulator
             BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
-            /*BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpriority, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -1864,12 +1865,13 @@ void mvee::start_monitored()
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ioctl, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
             // TODO: Check if it is still needed here
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1),
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),*/
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1), // Do not allow execve system call!!!
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+            /*BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),*/
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
         };
+#endif
 
 #ifdef MVEE_TASKSWITCH_OVERHEAD_BENCHMARK
         cpu_set_t cpu;
@@ -1884,6 +1886,7 @@ void mvee::start_monitored()
         if (!interaction::accept_tracing())
             fprintf(stderr, "Couldn't accept tracing\n");
 
+#ifdef USE_IPMON
         // Set BPF-filter
         struct sock_fprog prog = {
             (unsigned short)(sizeof(filter) / sizeof(filter[0])),
@@ -1893,6 +1896,7 @@ void mvee::start_monitored()
         // Avoid the need for CAP_SYS_ADMIN
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
             warnf("Couldn't avoid the need for CAP_SYS_ADMIN\n");
+#endif
 
         // Stop the variant so we can detach the main monitor thread.
         kill(getpid(), SIGSTOP);
@@ -1902,6 +1906,7 @@ void mvee::start_monitored()
         while (!mvee::can_run)
             ;
         
+#ifdef USE_IPMON
         // Enable seccomp BPF-filtering
         //if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
         if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
@@ -1909,6 +1914,7 @@ void mvee::start_monitored()
             perror("ERROR");
             warnf("Couldn't enable seccomp BPF-filtering\n");
         }
+#endif
 
         // The monitor thread is now attached. It is now safe to execve
         start_variant(i);

@@ -2102,7 +2102,10 @@ std::string getTextualMVEEWaitStatus (interaction::mvee_wait_status& status)
 		case STOP_NOTSTOPPED: 
 			ss << "STOP_NOTSTOPPED";
 			break;
-		case STOP_SYSCALL:
+		case STOP_SECCOMP:
+			ss << "STOP_SECCOMP";
+			break;
+        case STOP_SYSCALL:
 			ss << "STOP_SYSCALL";
 			break;
 		case STOP_SIGNAL:

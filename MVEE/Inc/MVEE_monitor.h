@@ -612,6 +612,16 @@ private:
 	//
     void          call_resume_all                     ();
 
+	//
+	// Resume a single variant
+	// 
+	void          call_resume_seccomp                         (int variantnum);
+
+	// 
+	// Resume all variants
+	//
+    void          call_resume_seccomp_all                     ();
+
 	// 
 	// Replace the syscall number for a single variant with __NR_getpid and then
 	// resume it. This forces the variant to execute sys_getpid instead of
@@ -794,7 +804,14 @@ private:
 
 	//
 	// Processes a SIGSYSTRAP signal. This function figures out if the signal
-	// was caused by a syscall entrance or exit and delegates to one of the
+	// was caused by a syscall entrance and delegates to one of the
+	// above functions accordingly
+	//
+    void handle_seccomp_event                (int index);
+
+	//
+	// Processes a SIGSYSTRAP signal. This function figures out if the signal
+	// was caused by a syscall exit and delegates to one of the
 	// above functions accordingly
 	//
     void handle_syscall_event                (int index);

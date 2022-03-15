@@ -59,6 +59,24 @@ unsigned char monitor::call_is_known_false_positive(long* precall_flags)
 }
 
 /*-----------------------------------------------------------------------------
+    call_resume_seccomp - 
+-----------------------------------------------------------------------------*/
+void monitor::call_resume_seccomp(int variantnum)
+{
+	if (!interaction::resume(variants[variantnum].variantpid))
+		throw ResumeFailure(variantnum, "syscall resume seccomp");
+}
+
+/*-----------------------------------------------------------------------------
+    call_resume_seccomp_all - Resumes all variants attached to the current monitor thread.
+-----------------------------------------------------------------------------*/
+void monitor::call_resume_seccomp_all()
+{
+    for (int i = 0; i < mvee::numvariants; ++i)
+		call_resume_seccomp(i);
+}
+
+/*-----------------------------------------------------------------------------
     call_resume - 
 -----------------------------------------------------------------------------*/
 void monitor::call_resume(int variantnum)

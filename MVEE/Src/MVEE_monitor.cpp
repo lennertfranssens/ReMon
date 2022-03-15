@@ -1129,6 +1129,7 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
         return;
     }
 
+    // TODO: LF: Remove the following 3 lines.
     __ptrace_syscall_info syscall_info{};
     ptrace(PTRACE_GET_SYSCALL_INFO, variants[index].variantpid, sizeof(syscall_info), &syscall_info);
     debugf("INFO: syscall_info = %hhu\t\t(PTRACE_SYSCALL_INFO_ENTRY = %hhu, PTRACE_SYSCALL_INFO_EXIT = %hhu, PTRACE_SYSCALL_INFO_SECCOMP = %hhu)\n", syscall_info.op, PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP);
@@ -1136,25 +1137,28 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
     {
-        debugf("INFO: status.reason = STOP_EXIT\n");
         handle_exit_event(index);
         return;
     }
+#ifdef USE_IPMON
+    else if (status.reason == STOP_SECCOMP)
+	{
+		handle_seccomp_event(index);
+		return;
+	}
+#endif
     else if (status.reason == STOP_SYSCALL)
 	{
-        debugf("INFO: status.reason = STOP_SYSCALL\n");
 		handle_syscall_event(index);
 		return;
 	}
 	else if (status.reason == STOP_FORK)
 	{
-        debugf("INFO: status.reason = STOP_FORK\n");
 		handle_fork_event(index, status);
 		return;
 	}
 	else if (status.reason == STOP_SIGNAL)
 	{
-        debugf("INFO: status.reason = STOP_SIGNAL\n");
 		if (status.data == SIGTRAP)
 		{
 			handle_trap_event(index);
@@ -1182,7 +1186,6 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	}
 	else if (status.reason == STOP_EXECVE)
 	{
-        debugf("INFO: status.reason = STOP_EXECVE\n");
 		call_resume(index);
 		return;
 	}
@@ -1240,8 +1243,12 @@ bool monitor::handle_rdtsc_event(int variantnum)
 				{
 					throw RwRegsFailure(variantnum, "writing RDTSC result");
 				}
-				
-				if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+
+#ifdef USE_IPMON
+				if (!interaction::resume(variants[variantnum].variantpid))
+#else
+                if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+#endif
 					throw ResumeFailure(variantnum, "RDTSC resume");
 
 				return true;
@@ -1296,7 +1303,11 @@ bool monitor::handle_rdtsc_event(int variantnum)
 						throw RwRegsFailure(i, "writing RDTSC result");
 					}
 
-					if (!interaction::resume_until_syscall(variants[i].variantpid))
+#ifdef USE_IPMON
+				if (!interaction::resume(variants[variantnum].variantpid))
+#else
+                if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+#endif
 						throw RwRegsFailure(i, "RDTSC resume");
 
                     variants[i].callnum = NO_CALL;
@@ -1511,7 +1522,11 @@ void monitor::handle_resume_event(int index)
 
             // And finally it's safe to resume the variant
             debugf("%s - resumed variant\n", call_get_variant_pidstr(i).c_str());
-			call_resume(i);
+#ifdef USE_IPMON
+			call_resume_seccomp(i);
+#else
+            call_resume(i);
+#endif
         }
 
         state = STATE_NORMAL;
@@ -1662,7 +1677,11 @@ void monitor::handle_fork_event(int index, interaction::mvee_wait_status& status
             }
         }
 
-		call_resume_all();
+#ifdef USE_IPMON
+			call_resume_seccomp_all();
+#else
+            call_resume_all();
+#endif
         state = STATE_IN_SYSCALL;
     }
 }
@@ -1718,7 +1737,12 @@ void monitor::handle_trap_event(int index)
 #endif
 	}
 
-	call_resume(index);
+#ifdef USE_IPMON
+			call_resume_seccomp(index);
+#else
+            call_resume(index);
+#endif
+
 }
 
 /*-----------------------------------------------------------------------------
@@ -1917,7 +1941,11 @@ void monitor::handle_syscall_exit_event(int index)
 				   call_get_variant_pidstr(index).c_str());		   
             variants[index].callnum = NO_CALL;
             state                 = STATE_NORMAL;
-			call_resume(index);
+#ifdef USE_IPMON
+			call_resume_seccomp(index);
+#else
+            call_resume(index);
+#endif
             return;
         }
 
@@ -1949,7 +1977,11 @@ void monitor::handle_syscall_exit_event(int index)
 		if (variants[index].have_overwritten_args)
 			call_restore_args(index);
 
-		call_resume(index);
+#ifdef USE_IPMON
+			call_resume_seccomp(index);
+#else
+            call_resume(index);
+#endif
         variants[index].call_type       = MVEE_CALL_TYPE_UNKNOWN;
         variants[index].call_dispatched = false;
         return;
@@ -1998,7 +2030,11 @@ void monitor::handle_syscall_exit_event(int index)
 				if (variants[i].have_overwritten_args)
 					call_restore_args(i);
 
+#ifdef USE_IPMON
+			call_resume_seccomp_all();
+#else
             call_resume_all();
+#endif
             return;
         }
 
@@ -2031,7 +2067,11 @@ void monitor::handle_syscall_exit_event(int index)
 				if (variants[i].have_overwritten_args)
 					call_restore_args(i);
 
+#ifdef USE_IPMON
+			call_resume_seccomp_all();
+#else
             call_resume_all();
+#endif
 		}
         else
             debugf("WARNING: postcall handler handled resume. not resuming...\n");
@@ -2044,10 +2084,11 @@ void monitor::handle_syscall_exit_event(int index)
 }
 
 /*-----------------------------------------------------------------------------
-    handle_syscall_event
+    handle_seccomp_event
 -----------------------------------------------------------------------------*/
-void monitor::handle_syscall_event(int index)
+void monitor::handle_seccomp_event(int index)
 {
+    // TODO: LF: Make a function of it? Do I need it both here and in the handle_syscall_event?
     // ERESTARTSYS handler
     if (variants[index].restarting_syscall
         && !variants[index].restarted_syscall)
@@ -2125,15 +2166,106 @@ void monitor::handle_syscall_event(int index)
         return;
     }
 
+    handle_syscall_entrance_event(index);
+}
+
+/*-----------------------------------------------------------------------------
+    handle_syscall_event
+-----------------------------------------------------------------------------*/
+void monitor::handle_syscall_event(int index)
+{
+    // TODO: LF: Make a function of it? Do I need it both here and in the handle_seccomp_event?
+    // ERESTARTSYS handler
+    if (variants[index].restarting_syscall
+        && !variants[index].restarted_syscall)
+    {
+        bool all_restarted = true;
+        bool all_synced    = true;
+
+        debugf("%s - restarted syscall is back at syscall entry\n",
+			   call_get_variant_pidstr(index).c_str());
+
+        if (variants[index].call_type != MVEE_CALL_TYPE_UNSYNCED
+            && state != STATE_IN_FORKCALL)
+        {
+            variants[index].restarted_syscall = true;
+
+            // This is retarded. Some variants can return normally from the
+            // syscall, while others can see a -ERESTART* error
+            for (int i = 0; i < mvee::numvariants; ++i)
+            {
+                if (!variants[i].restarting_syscall || !variants[i].restarted_syscall)
+                {
+                    all_restarted = false;
+
+                    // call is still in progress
+                    if (variants[i].callnum != NO_CALL)
+                    {
+                        all_synced = false;
+                    }
+                }
+            }
+
+            // Do not blindly resume the variants here! If it's either a master call
+            // OR a normal call that was restarted in _all_ variants, we still have
+            // to check if we can maybe deliver that pending signal.
+            if (all_restarted)
+            {
+                debugf("All variants were restarted and are now back at the syscall entry\n");
+                if (sig_prepare_delivery())
+                {
+//					debugf("Signal delivery in progress!\n");
+                    for (int i = 0; i < mvee::numvariants; ++i)
+                        variants[i].restarting_syscall = false;
+                    return;
+                }
+                else
+                {
+                    // no signal to be delivered. Was this a spurious wakeup?!
+                    // can also happen if a signal was delivered during a master call!!!
+                    debugf("no signal to be delivered...\n");
+                    for (int i = 0; i < mvee::numvariants; ++i)
+                    {
+                        debugf("%s - all restarted - resuming variant from restarted syscall entry\n", 
+							   call_get_variant_pidstr(i).c_str());
+                        variants[i].restarting_syscall = variants[i].restarted_syscall = false;
+						call_resume(i);
+                    }
+                    return;
+                }
+
+            }
+            else if (state != STATE_IN_MASTERCALL && all_synced)
+            {
+                sig_restart_partially_interrupted_syscall();
+            }
+            return;
+        }
+        else
+        {
+            debugf("%s - unsynced or forkcall - resuming variant from restarted syscall entry\n", 
+				   call_get_variant_pidstr(index).c_str());
+            variants[index].restarting_syscall = variants[index].restarted_syscall = false;
+			call_resume(index);
+        }
+
+        return;
+    }
+
+#ifdef USE_IPMON
+	handle_syscall_exit_event(index);
+#else
     if (variants[index].callnum == NO_CALL)
         handle_syscall_entrance_event(index);
     else
         handle_syscall_exit_event(index);
+#endif
 }
 
 /*-----------------------------------------------------------------------------
     sig_restart_partially_interrupted_syscall
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_restart_partially_interrupted_syscall()
 {
     debugf("Some variants managed to return normally from this syscall\n");
@@ -2160,6 +2292,7 @@ void monitor::sig_restart_partially_interrupted_syscall()
     point. Then, at the sync point, we send the original signal ourselves
     and we let it go through from within this function.
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status& status)
 {
     siginfo_t siginfo;
@@ -2616,6 +2749,7 @@ bool monitor::in_ipmon(int variantnum, unsigned long ip)
 	In this function we simply keep restarting the slaves until they also
 	see the specified signal
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 bool monitor::sig_handle_sigchld_race(std::vector<mvee_pending_signal>::iterator it)
 {		
 	interaction::mvee_wait_status status;
@@ -2721,6 +2855,7 @@ bool monitor::sig_handle_sigchld_race(std::vector<mvee_pending_signal>::iterator
     the variants' contexts should be backed up and the current syscall should be
     skipped.
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 bool monitor::sig_prepare_delivery ()
 {
     if (in_signal_handler() || 
@@ -2911,6 +3046,7 @@ void monitor::sig_finish_delivery ()
 /*-----------------------------------------------------------------------------
     mvee_sig_return_from_sighandler - restores original context and resumes variants
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_return_from_sighandler ()
 {
     // restore normal execution after return from signal handler
@@ -2973,6 +3109,7 @@ void monitor::sig_return_from_sighandler ()
     For all restart errors, the kernel will adjust the instruction pointer
     so that we're back at the start of the original syscall
 -----------------------------------------------------------------------------*/
+// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_restart_syscall(int variantnum)
 {
 	interaction::mvee_wait_status status;
