@@ -1718,13 +1718,85 @@ void mvee::start_monitored()
             prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0);
 
 #ifdef USE_IPMON
+        // magic_value is the value that is returned to glibc after the first custom syscall and can be used as key
+        __u64 magic_value = 123456; // TODO: Generate a key
+        // return addresses after the custom syscalls from glibc
+        __u64 instruction_pointer_1 = 0; // TODO: automatic get the return address from the first and second custom syscall from glibc
+        __u64 instruction_pointer_2 = 0;
+
+        // steps A, B, C, D, E, ..., Z
+        int A = 1,
+            B = 13,
+            C = 15,
+            Z = 26;
+
         // Define BPF-filter
         struct sock_filter filter[] = {
-            // TODO: check magic value in r12 (p. 111 Adv. Tech. MVEE) -> SECCOMP_RET_KILL_PROCESS? if not correct, else resume filtering
-            // BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[12])),
-            // BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, MAGIC_VALUE_FROM_MEMORY, 1, 0),
-            // BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
-            // load system call number into accumulator
+
+            /* [0] Load the return address from 'seccomp_data' buffer into accumulator */
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
+            /* [1][A] Jump forward B-A-1 instructions if return address does not match 'instruction_pointer_1'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, instruction_pointer_1, 0, B-A-1),
+            /* [2] Load system call number from 'seccomp_data' buffer into accumulator. */
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+            /* [3-9] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0), // TODO: change to gettid to test
+            /* [10] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
+            /* [11] Don't execute the system call, and return 'magic_value' in 'errno'. */
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (magic_value & SECCOMP_RET_DATA)),
+            /* [12] Execute the system call in tracer */
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+            /* [13][B] Jump forward Z-B-1 instructions if return address does not match 'instruction_pointer_2'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, instruction_pointer_2, 0, Z-B-1),
+            /* [14] Load magic value from 'seccomp_data' (r9, 6th argument) buffer into accumulator */
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[5])),
+            /* [15][C] Jump forward Z-C-1 instructions if magic value does not match 'magic_value'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, magic_value, 0, Z-C-1),
+            /* [16] Load system call number from 'seccomp_data' buffer into accumulator. */
+            BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+            /* [17-23] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0), // TODO: change to gettid to test
+            /* [24] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
+            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
+            /* [25] Execute the system call */
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+            /* [26][Z] Execute the system call in tracer */
+            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+
+
+            // Check if return address is from first custom syscall
+            // TRUE:
+            //  Execute filter. Can we allow the syscall?
+            //      True:
+            //         Don't execute and return _errno in 'errno'.
+            //      FALSE:
+            //          Return trace
+            // FALSE:
+            //  Check if return address is from second custom syscall
+            //  TRUE:
+            //      Check if the magic value in r12 is equal to our key (_errno)
+            //      TRUE:
+            //          Execute the filter again but now with allow and trace return values.
+            //      FALSE:
+            //          Return trace
+            //  FALSE:
+            //      Return trace
+
+
+            /*// load system call number into accumulator
             BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_uname, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
@@ -1864,12 +1936,9 @@ void mvee::start_monitored()
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
             BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_ioctl, 0, 1),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-            // TODO: Check if it is still needed here
-            BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1), // Do not allow execve system call!!!
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
-            /*BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1),
+            //BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_execve, 0, 1), // Do not allow execve system call!!!
+            //BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
             BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),*/
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
         };
 #endif
 
