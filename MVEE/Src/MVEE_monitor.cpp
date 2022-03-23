@@ -87,6 +87,10 @@ variantstate::variantstate()
     , pendingpid (0)
     , infinite_loop_ptr (0)
     , should_sync_ptr (0)
+#ifdef USE_IPMON
+    , syscall_address_ptr_known (false)
+    , syscall_address_ptr (0)
+#endif
     , callnumbackup (0)
     , orig_controllen (0)
     , config (NULL)

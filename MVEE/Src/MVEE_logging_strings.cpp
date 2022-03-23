@@ -223,6 +223,7 @@ const char* getTextualSyscall(long int syscallnum)
 			DEF_CASE(MVEE_ENABLE_XCHECKS);
 			DEF_CASE(MVEE_GET_LEADER_SHM_TAG);
 			DEF_CASE(MVEE_RESET_ATFORK);
+            DEF_CASE(MVEE_GET_SYSCALL_ADDRESS);
         }
     }
 

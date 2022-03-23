@@ -242,6 +242,10 @@ public:
     pid_t         pendingpid;                                       // Process ID of the newly created process/thread
     unsigned long infinite_loop_ptr;                                // pointer to the sys_pause loop
     unsigned long should_sync_ptr;                                  // pointer to the should_sync flag
+#ifdef USE_IPMON
+	bool		  syscall_address_ptr_known;
+    unsigned long syscall_address_ptr;								// pointer to the syscall instruction in glibc
+#endif
     long          callnumbackup;                                    // Backup of the syscall num. Made when the monitor is delivering a signal
     PTRACE_REGS   regsbackup;                                       // Backup of the registers. Made when the monitor is delivering a signal
     unsigned long hw_bps[4];                                        // currently set hardware breakpoints

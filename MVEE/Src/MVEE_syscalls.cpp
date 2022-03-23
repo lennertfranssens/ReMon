@@ -21,6 +21,8 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <sstream>
+#include <linux/filter.h>
+#include <linux/seccomp.h>
 #include "MVEE.h"
 #include "MVEE_monitor.h"
 #include "MVEE_private_arch.h"
@@ -259,6 +261,7 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 			case MVEE_RUNS_UNDER_MVEE_CONTROL:
 			case MVEE_ENABLE_XCHECKS:
 			case MVEE_DISABLE_XCHECKS:
+            case MVEE_GET_SYSCALL_ADDRESS:
 			case MVEE_GET_LEADER_SHM_TAG:
             {
                 result = MVEE_CALL_TYPE_UNSYNCED;
@@ -609,6 +612,84 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 				result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 				break;
 			}
+
+            // This is only used when using IPMON (USE_IPMON) to get the address of the syscall
+            // instruction in glibc.
+            case MVEE_GET_SYSCALL_ADDRESS:
+            {
+                // as of 23/03/2022, this call is now invoked as follows (pseudocode):
+                // syscall(MVEE_GET_SYSCALL_ADDRESS, &mvee_syscall_address);
+                //
+                // arguments:
+                // unsigned long  mvee_syscall_address    : pointer to the syscall instruction in glibc
+                //
+#ifdef USE_IPMON
+				variants[variantnum].syscall_address_ptr        = ARG1(variantnum);
+                variants[variantnum].syscall_address_ptr_known  = true;
+
+                debugf("INFO: mvee_syscall_address = %llu", ARG1(1));
+
+                int A = 1,
+                    B = 12;
+                int B_A_1 = B-A-1;
+
+                // Define empty BPF-filter while starting variant
+                struct sock_filter filter[] = {
+                    /* [0] Load the return address from 'seccomp_data' buffer into accumulator */
+                    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
+                    /* [1][A] Jump forward B-A-1 instructions if return address does not match the syscall address. */
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)variants[variantnum].syscall_address_ptr, 0, (unsigned char)B_A_1),
+                    /* [2] Load system call number from 'seccomp_data' buffer into accumulator. */
+                    BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+                    /* [3-9] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0), // TODO: change to gettid to test
+                    /* [10] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
+                    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
+                    /* [11] Execute the system call */
+                    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+                    /* [12][B] Execute the system call in tracer */
+                    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+
+
+                    // Check if return address is from syscall instruction in glibc
+                    // TRUE:
+                    //  Execute filter. Can we allow the syscall?
+                    //      True:
+                    //          Allow
+                    //      FALSE:
+                    //          Return trace
+                    // FALSE:
+                    //      Return trace
+                };
+
+                // Set BPF-filter
+                struct sock_fprog prog = {
+                    (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+                    filter,
+                };
+
+                // Avoid the need for CAP_SYS_ADMIN
+                if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+                    warnf("Couldn't avoid the need for CAP_SYS_ADMIN\n");
+                
+                // Enable seccomp BPF-filtering
+                //if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+                if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
+                {
+                    perror("ERROR");
+                    warnf("Couldn't enable seccomp BPF-filtering\n");
+                }
+#endif
+
+				result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
+                break;
+            }
 
 			//
 			// 
