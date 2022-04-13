@@ -193,10 +193,9 @@ enum mvee_shared_buffer_types
 #define MVEE_RESET_ATFORK              MVEE_FAKE_SYSCALL_BASE + 21
 
 //
-// MVEE_GET_SYSCALL_ADDRESS: returns the address of the custom syscall
-// instruction for the variant.
+// MVEE_REGISTER_IPMON: Adds addresses and needed state to the variant to use ipmon
 //
-#define MVEE_GET_SYSCALL_ADDRESS       MVEE_FAKE_SYSCALL_BASE + 22
+#define MVEE_REGISTER_IPMON            MVEE_FAKE_SYSCALL_BASE + 22
 
 //
 // MVEE Semaphore emulation calls. One weakness of our synchronization agents is

@@ -6911,6 +6911,8 @@ POSTCALL(poll)
   sys_prctl - (int option, unsigned long arg2, unsigned long arg3,
   unsigned long arg4, unsigned long arg5)
 -----------------------------------------------------------------------------*/
+// TODO: Register ipmon not here because we are not using the kernel patch anymore.
+// Change to a fake syscall and handle in MVEE_syscalls.cpp.
 LOG_ARGS(prctl)
 {
 	debugf("%s - SYS_PRCTL(%d, %lu, %lu, %lu, %lu)\n",
@@ -6957,6 +6959,7 @@ CALL(prctl)
     }
 	else if (ARG1(0) == PR_REGISTER_IPMON)
 	{
+		// TODO: move this to the MVEE_syscalls.cpp fake syscall handler
 		// inspect the list of syscalls
 		unsigned char* ipmon_mask = rw::read_data(variants[0].variantpid, (void*) ARG2(0), ARG3(0));
 		SYSCALL_MASK(dummy_mask);
@@ -7573,6 +7576,8 @@ CALL(mmap)
     if (ARG5(0) && (int)ARG5(0) != -1)
     {
         fd_info* info = set_fd_table->get_fd_info(ARG5(0));
+
+		debugf("INFO: fd_info path name is %s\n", info->get_path_string().c_str());
 
 		// Handle firefox shm corner case here.  FF has threads that create
 		// temporary shm backing files.  These files are created, unlinked,

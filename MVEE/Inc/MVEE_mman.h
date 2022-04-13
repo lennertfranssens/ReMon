@@ -352,6 +352,7 @@ public:
 	// Calculates a random base address for a read/write mapping of <size> bytes
 	// The resulting address is available in _ALL_ variants
 	unsigned long calculate_data_mapping_base      (unsigned long size);
+    unsigned long calculate_data_mapping_base_in_16_bits      (unsigned long size);
 	bool is_available_in_all_variants              (unsigned long base, unsigned long size);
 
     //

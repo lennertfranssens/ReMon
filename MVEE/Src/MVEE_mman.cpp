@@ -1429,7 +1429,86 @@ unsigned long mmap_table::calculate_data_mapping_base(unsigned long size)
 	{
 		// pick any address within our randomized mmap region
 		std::random_device rd;
-		std::mt19937_64 mt(rd());
+		std::mt19937_64 mt(rd()); // TODO: copy the function and only do this for bits 12->28, the others are 0
+		// we do >> 12 because we want to calculate the page number		
+		std::uniform_int_distribution<unsigned long> distr(mmap_base >> 12, (mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8) - ROUND_UP(size, 4096)) >> 12);
+
+		//
+		// This calculates a random page in the range:
+		//
+		// +-----------------------------------------------------+---------------+
+		// | <---------------  viable addresses ---------------> | <--  size --> |
+		// +-----------------------------------------------------+---------------+
+		//
+		// ^                                                                     ^
+		// |                                                                     |
+		// +-----+                                        +----------------------+
+		//    mmap_base              mmap_base + 1/256th of the usable address space
+		//
+		unsigned long address = distr(mt);
+		// back to a full address
+		address <<= 12;
+
+//		warnf("No mapping found in mmap base zone - selected address: 0x" PTRSTR " - size: %ld\n", address, size);
+
+		// assert that this address is available. It should be if we implement
+		// ASLR control correctly
+		if (is_available_in_all_variants(address, ROUND_UP(size, 4096)))
+			return address;
+	}
+	else
+	{
+		unsigned long address = (*region_iterator)->region_base_address - ROUND_UP(size, 4096);
+
+		// We already have a mapping in our mmap region. See if we can extend it downwards
+		if (address > mmap_base)
+		{
+//			warnf("Mapping found above mmap base - extended downwards address address: 0x" PTRSTR "\n", address);
+
+			// yep
+			if (is_available_in_all_variants(address, ROUND_UP(size, 4096)))
+				return address;
+		}
+		else
+		{
+			// nope... See if we can squeeze this region in somewhere
+			auto prev_region = region_iterator;
+			for (region_iterator = ++region_iterator; region_iterator != full_map[0].end(); ++region_iterator)
+			{
+				// Found a hole to squeeze this region in
+				if ((*region_iterator)->region_base_address - ((*prev_region)->region_base_address + (*prev_region)->region_size) > size)
+				{
+					if (is_available_in_all_variants((*region_iterator)->region_base_address - ROUND_UP(size, 4096), ROUND_UP(size, 4096)))
+						return (*region_iterator)->region_base_address - ROUND_UP(size, 4096);
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+/*-----------------------------------------------------------------------------
+    calculate_data_mapping_base_in_16_bits
+-----------------------------------------------------------------------------*/
+unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long size)
+{
+	// We only do this for 64-bit platforms.
+	if (sizeof(long) == 4)
+		return 0;
+
+	// find the lowest used address above the mmap_base
+    mmap_region_info tmp_region(0, mmap_base, 0, 0, NULL, 0, 0);
+	auto region_iterator = full_map[0].upper_bound(&tmp_region);
+
+	// if there is no mapping above mmap base
+	if (region_iterator == full_map[0].end() ||
+		// or if the first mapping is outside of our randomized mmap region
+		(*region_iterator)->region_base_address > mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8))
+	{
+		// pick any address within our randomized mmap region
+		std::random_device rd;
+		std::mt19937_64 mt(rd()); // TODO: copy the function and only do this for bits 12->28, the others are 0
 		// we do >> 12 because we want to calculate the page number		
 		std::uniform_int_distribution<unsigned long> distr(mmap_base >> 12, (mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8) - ROUND_UP(size, 4096)) >> 12);
 

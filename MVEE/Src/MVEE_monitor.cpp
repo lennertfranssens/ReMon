@@ -88,8 +88,7 @@ variantstate::variantstate()
     , infinite_loop_ptr (0)
     , should_sync_ptr (0)
 #ifdef USE_IPMON
-    , syscall_address_ptr_known (false)
-    , syscall_address_ptr (0)
+    , ipmon_active (false)
 #endif
     , callnumbackup (0)
     , orig_controllen (0)
@@ -1141,23 +1140,27 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
     {
+        debugf("Line 1143\n");
         handle_exit_event(index);
         return;
     }
 #ifdef USE_IPMON
-    else if (status.reason == STOP_SECCOMP)
+    else if (variants[index].ipmon_active && status.reason == STOP_SECCOMP)
 	{
+        debugf("Line 1150\n");
 		handle_seccomp_event(index);
 		return;
 	}
 #endif
     else if (status.reason == STOP_SYSCALL)
 	{
+        debugf("Line 1157\n");
 		handle_syscall_event(index);
 		return;
 	}
 	else if (status.reason == STOP_FORK)
 	{
+        debugf("Line 1163\n");
 		handle_fork_event(index, status);
 		return;
 	}
@@ -1165,11 +1168,13 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	{
 		if (status.data == SIGTRAP)
 		{
+            debugf("Line 1171\n");
 			handle_trap_event(index);
 		}
 #ifdef MVEE_ARCH_HAS_RDTSC
 		else if (status.data == SIGSEGV)
 		{
+            debugf("Line 1177\n");
 			if (handle_rdtsc_event(index))
 				return;
 		}
@@ -1178,11 +1183,13 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 		{
 			if (state == STATE_WAITING_ATTACH && !variants[index].variant_attached)
             {
+                debugf("Line 1186\n");
                 handle_attach_event(index);
                 return;
             }
             if (state == STATE_WAITING_RESUME && !variants[index].variant_resumed)
             {
+                debugf("Line 1192\n");
                 handle_resume_event(index);
                 return;
             }
@@ -1190,10 +1197,12 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	}
 	else if (status.reason == STOP_EXECVE)
 	{
+        debugf("Line 1200\n");
 		call_resume(index);
 		return;
 	}
 
+    debugf("Line 1205\n");
 	handle_signal_event(index, status);
 }
 
@@ -1249,12 +1258,23 @@ bool monitor::handle_rdtsc_event(int variantnum)
 				}
 
 #ifdef USE_IPMON
-				if (!interaction::resume(variants[variantnum].variantpid))
+                debugf("Line 1261\n");
+                if (variants[variantnum].ipmon_active)
+                {
+                    debugf("Line 1264\n");
+                    if (!interaction::resume(variants[variantnum].variantpid))
+                        throw ResumeFailure(variantnum, "RDTSC resume");
+                }
+                else
+                {
+                    debugf("Line 1270\n");
+                    if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                        throw ResumeFailure(variantnum, "RDTSC resume");
+                }
 #else
                 if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                    throw ResumeFailure(variantnum, "RDTSC resume");
 #endif
-					throw ResumeFailure(variantnum, "RDTSC resume");
-
 				return true;
 			}
 
@@ -1308,12 +1328,20 @@ bool monitor::handle_rdtsc_event(int variantnum)
 					}
 
 #ifdef USE_IPMON
-				if (!interaction::resume(variants[variantnum].variantpid))
+                    if (variants[variantnum].ipmon_active)
+                    {
+                        if (!interaction::resume(variants[variantnum].variantpid))
+                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                    }
+                    else
+                    {
+                        if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                    }
 #else
-                if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                    if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                        throw RwRegsFailure(variantnum, "RDTSC resume");
 #endif
-						throw RwRegsFailure(i, "RDTSC resume");
-
                     variants[i].callnum = NO_CALL;
                 }
 
@@ -1527,7 +1555,14 @@ void monitor::handle_resume_event(int index)
             // And finally it's safe to resume the variant
             debugf("%s - resumed variant\n", call_get_variant_pidstr(i).c_str());
 #ifdef USE_IPMON
-			call_resume_seccomp(i);
+            if (variants[i].ipmon_active)
+            {
+			    call_resume_seccomp(i);
+            }
+            else
+            {
+                call_resume(i);
+            }
 #else
             call_resume(i);
 #endif
@@ -1681,11 +1716,9 @@ void monitor::handle_fork_event(int index, interaction::mvee_wait_status& status
             }
         }
 
-#ifdef USE_IPMON
-			call_resume_seccomp_all();
-#else
-            call_resume_all();
-#endif
+        // TODO: Add call_resume_seccomp_all();
+        call_resume_all();
+
         state = STATE_IN_SYSCALL;
     }
 }
@@ -1742,9 +1775,16 @@ void monitor::handle_trap_event(int index)
 	}
 
 #ifdef USE_IPMON
-			call_resume_seccomp(index);
+    if (variants[index].ipmon_active)
+    {
+        call_resume_seccomp(index);
+    }
+    else
+    {
+        call_resume(index);
+    }
 #else
-            call_resume(index);
+    call_resume(index);
 #endif
 
 }
@@ -1946,7 +1986,14 @@ void monitor::handle_syscall_exit_event(int index)
             variants[index].callnum = NO_CALL;
             state                 = STATE_NORMAL;
 #ifdef USE_IPMON
-			call_resume_seccomp(index);
+            if (variants[index].ipmon_active)
+            {
+			    call_resume_seccomp(index);
+            }
+            else
+            {
+                call_resume(index);
+            }
 #else
             call_resume(index);
 #endif
@@ -1982,10 +2029,18 @@ void monitor::handle_syscall_exit_event(int index)
 			call_restore_args(index);
 
 #ifdef USE_IPMON
-			call_resume_seccomp(index);
+            if (variants[index].ipmon_active)
+            {
+			    call_resume_seccomp(index);
+            }
+            else
+            {
+                call_resume(index);
+            }
 #else
             call_resume(index);
 #endif
+
         variants[index].call_type       = MVEE_CALL_TYPE_UNKNOWN;
         variants[index].call_dispatched = false;
         return;
@@ -2035,7 +2090,13 @@ void monitor::handle_syscall_exit_event(int index)
 					call_restore_args(i);
 
 #ifdef USE_IPMON
-			call_resume_seccomp_all();
+            for (i = 0; i < mvee::numvariants; ++i)
+            {
+                if (variants[i].ipmon_active)
+			        call_resume_seccomp(i);
+                else
+                    call_resume(i);
+            }
 #else
             call_resume_all();
 #endif
@@ -2072,7 +2133,13 @@ void monitor::handle_syscall_exit_event(int index)
 					call_restore_args(i);
 
 #ifdef USE_IPMON
-			call_resume_seccomp_all();
+            for (i = 0; i < mvee::numvariants; ++i)
+            {
+                if (variants[i].ipmon_active)
+			        call_resume_seccomp(i);
+                else
+                    call_resume(i);
+            }
 #else
             call_resume_all();
 #endif
@@ -2257,7 +2324,17 @@ void monitor::handle_syscall_event(int index)
     }
 
 #ifdef USE_IPMON
-	handle_syscall_exit_event(index);
+    if (variants[index].ipmon_active)
+    {
+	    handle_syscall_exit_event(index);
+    }
+    else
+    {
+        if (variants[index].callnum == NO_CALL)
+            handle_syscall_entrance_event(index);
+        else
+            handle_syscall_exit_event(index);
+    }
 #else
     if (variants[index].callnum == NO_CALL)
         handle_syscall_entrance_event(index);

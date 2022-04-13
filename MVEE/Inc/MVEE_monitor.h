@@ -80,7 +80,7 @@ enum MonitorState
 #define ESC_ENABLE_SYSCALL_CHECKS   -200
 #define ESC_EXECVE_FAILURE      -210
 #define ESC_RINGBUFF_INIT       -300 // Ring Buffer initialization                                                 
-#define ESC_RINGBUFF_DESTROY        -301 // Ring Buffer destruction        
+#define ESC_RINGBUFF_DESTROY        -301 // Ring Buffer destruction
 
 /*-----------------------------------------------------------------------------
   Classes
@@ -243,8 +243,7 @@ public:
     unsigned long infinite_loop_ptr;                                // pointer to the sys_pause loop
     unsigned long should_sync_ptr;                                  // pointer to the should_sync flag
 #ifdef USE_IPMON
-	bool		  syscall_address_ptr_known;
-    unsigned long syscall_address_ptr;								// pointer to the syscall instruction in glibc
+	bool		  ipmon_active;
 #endif
     long          callnumbackup;                                    // Backup of the syscall num. Made when the monitor is delivering a signal
     PTRACE_REGS   regsbackup;                                       // Backup of the registers. Made when the monitor is delivering a signal

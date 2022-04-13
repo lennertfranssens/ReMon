@@ -1717,13 +1717,6 @@ void mvee::start_monitored()
         if ((*mvee::config_variant_global)["intercept_tsc"].asBool())
             prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0);
 
-#ifdef USE_IPMON
-        // Define empty BPF-filter while starting variant
-        struct sock_filter filter[] = {
-            BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-        };
-#endif
-
 #ifdef MVEE_TASKSWITCH_OVERHEAD_BENCHMARK
         cpu_set_t cpu;
         CPU_ZERO(&cpu);
@@ -1738,12 +1731,6 @@ void mvee::start_monitored()
             fprintf(stderr, "Couldn't accept tracing\n");
 
 #ifdef USE_IPMON
-        // Set BPF-filter
-        struct sock_fprog prog = {
-            (unsigned short)(sizeof(filter) / sizeof(filter[0])),
-            filter,
-        };
-
         // Avoid the need for CAP_SYS_ADMIN
         if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
             warnf("Couldn't avoid the need for CAP_SYS_ADMIN\n");
@@ -1756,17 +1743,9 @@ void mvee::start_monitored()
         // thread to attach
         while (!mvee::can_run)
             ;
-        
-#ifdef USE_IPMON
-        // Enable seccomp BPF-filtering
-        //if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
-        if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
-        {
-            perror("ERROR");
-            warnf("Couldn't enable seccomp BPF-filtering\n");
-        }
-#endif
 
+        // TODO: First trace all syscalls untill... we have the glibc syscall ret ptr
+        // and we return that ptr to the registration of ipmon, which then sets up the bpf filter
         // The monitor thread is now attached. It is now safe to execve
         start_variant(i);
     }
