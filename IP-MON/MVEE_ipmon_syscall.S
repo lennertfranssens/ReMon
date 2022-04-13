@@ -134,6 +134,7 @@ Outgoing Stack:
 		+00 enclave entrypoint return address
 		+08 arg6
 -----------------------------------------------------------------------------*/
+		.align 4096									// algin 4096 to get the 12 most lsbs to 0
 FUNCTION_START_EXPORTED(ipmon_enclave_entrypoint)
 		// The callee (ipmon_enclave) will preserve registers rbp,rbx and r12-r15.
 		// We are responsible for preserving the rest of the registers except for:

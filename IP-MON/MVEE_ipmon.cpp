@@ -48,6 +48,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <linux/socket.h>
+#include <linux/filter.h>
+#include <linux/seccomp.h>
 #include <arpa/inet.h>
 #include <sys/un.h>
 #include <sys/mman.h>
@@ -3825,11 +3827,11 @@ extern "C" void* ipmon_register_thread()
 	ipmon_checked_syscall(MVEE_GET_THREAD_NUM, &ipmon_variant_num);
 
 	// Register IP-MON
-	long ret = ipmon_checked_syscall(__NR_prctl, 
-									 PR_REGISTER_IPMON, 
-									 kernelmask, 
-									 ROUND_UP(__NR_syscalls, 8) / 8, 
-									 RB, 
+	// TODO: Change to a fake syscall because we don't use the kernel patch anymore
+	long glibc_syscall_ret_ptr = ipmon_checked_syscall(MVEE_REGISTER_IPMON,
+									 //kernelmask, 
+									 //ROUND_UP(__NR_syscalls, 8) / 8, 
+									 //RB, 
 #ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
 									 ipmon_enclave_entrypoint_alternative
 #else
@@ -3839,11 +3841,68 @@ extern "C" void* ipmon_register_thread()
 
 ///	RB = NULL;
 
-	if (ret < 0 && ret > -4096)
+	/*if (ret < 0 && ret > -4096)
 	{
-		printf("ERROR: IP-MON registration failed. sys_prctl(PR_REGISTER_IPMON) returned: %ld (%s)\n", ret, strerror(-ret));
+		printf("ERROR: IP-MON registration failed. syscall(PR_REGISTER_IPMON) returned: %ld (%s)\n", ret, strerror(-ret));
 //		exit(-1);
 		return NULL;
+	}*/
+
+	// BPF-filter setup
+	int A = 1,
+		B = 12;
+	int B_A_1 = B-A-1;
+
+	// TODO: instead of allow, return the glibc_syscall_ret_ptr
+
+	// Define empty BPF-filter while starting variant
+	// struct sock_filter filter[] = {
+	// 	/* [0] Load the return address from 'seccomp_data' buffer into accumulator */
+	// 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
+	// 	/* [1][A] Jump forward B-A-1 instructions if return address does not match the syscall address. */
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)variants[variantnum].syscall_address_ptr, 0, (unsigned char)B_A_1),
+	// 	/* [2] Load system call number from 'seccomp_data' buffer into accumulator. */
+	// 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+	// 	/* [3-9] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0), // TODO: change to gettid to test
+	// 	/* [10] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
+	// 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
+	// 	/* [11] Execute the system call */
+	// 	BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+	// 	/* [12][B] Execute the system call in tracer */
+	// 	BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+
+
+		// Check if return address is from syscall instruction in glibc
+		// TRUE:
+		//  Execute filter. Can we allow the syscall?
+		//      True:
+		//          Allow
+		//      FALSE:
+		//          Return trace
+		// FALSE:
+		//      Return trace
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
+	};
+
+	// Set BPF-filter
+	struct sock_fprog prog = {
+		(unsigned short)(sizeof(filter) / sizeof(filter[0])),
+		filter,
+	};
+
+	// Enable seccomp BPF-filtering
+	//if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
+	{
+		perror("ERROR");
+		warnf("Couldn't enable seccomp BPF-filtering\n");
 	}
 
 #ifdef MVEE_IP_PKU_ENABLED
