@@ -7577,8 +7577,6 @@ CALL(mmap)
     {
         fd_info* info = set_fd_table->get_fd_info(ARG5(0));
 
-		debugf("INFO: fd_info path name is %s\n", info->get_path_string().c_str());
-
 		// Handle firefox shm corner case here.  FF has threads that create
 		// temporary shm backing files.  These files are created, unlinked,
 		// dupped, mmaped, and then closed (both the original and the dupped
@@ -7618,6 +7616,31 @@ CALL(mmap)
 			// return MVEE_CALL_ALLOW;
 #endif
         }
+
+#ifdef USE_IPMON
+		std::string libipmonso = "libipmon.so";
+		std::string info_filename = info->get_path_string();
+		if (info_filename.length() >= libipmonso.length() && info_filename.compare(info_filename.length() - libipmonso.length(), libipmonso.length(), libipmonso) == 0)
+		{
+			debugf("INFO: fd_info path name is %s\n", info_filename.c_str());
+			unsigned long address = set_mmap_table->calculate_data_mapping_base_in_16_bits(ARG2(0));
+
+			for (int i = 0; i < mvee::numvariants; ++i)
+			{
+				call_overwrite_arg_value(i, 1, address, true);
+
+				debugf("%s - replaced call by SYS_MMAP(0x" PTRSTR ", %lu, %s, %s, %d, %lu)\n",
+					   call_get_variant_pidstr(i).c_str(),
+					   address,
+					   (unsigned long)ARG2(i),
+					   getTextualProtectionFlags(ARG3(i)).c_str(),
+					   getTextualMapType(ARG4(i)).c_str(),
+					   (int)ARG5(i),
+					   (unsigned long)ARG6(i));
+			}
+            return MVEE_CALL_ALLOW;
+		}
+#endif
 
 #ifdef MVEE_ALLOW_SHM
         if (ARG4(0) & MAP_SHARED)

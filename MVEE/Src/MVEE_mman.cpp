@@ -1491,6 +1491,7 @@ unsigned long mmap_table::calculate_data_mapping_base(unsigned long size)
 /*-----------------------------------------------------------------------------
     calculate_data_mapping_base_in_16_bits
 -----------------------------------------------------------------------------*/
+ // TODO: Implement this function to get an address that can be accessed with 16 bits only
 unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long size)
 {
 	// We only do this for 64-bit platforms.
@@ -1506,9 +1507,10 @@ unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long s
 		// or if the first mapping is outside of our randomized mmap region
 		(*region_iterator)->region_base_address > mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8))
 	{
+        debugf("INFO: if\n");
 		// pick any address within our randomized mmap region
 		std::random_device rd;
-		std::mt19937_64 mt(rd()); // TODO: copy the function and only do this for bits 12->28, the others are 0
+		std::mt19937_64 mt(rd());
 		// we do >> 12 because we want to calculate the page number		
 		std::uniform_int_distribution<unsigned long> distr(mmap_base >> 12, (mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8) - ROUND_UP(size, 4096)) >> 12);
 
@@ -1537,6 +1539,7 @@ unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long s
 	}
 	else
 	{
+        debugf("INFO: else\n");
 		unsigned long address = (*region_iterator)->region_base_address - ROUND_UP(size, 4096);
 
 		// We already have a mapping in our mmap region. See if we can extend it downwards
@@ -1563,7 +1566,7 @@ unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long s
 			}
 		}
 	}
-
+    debugf("INFO: returning 0\n");
 	return 0;
 }
 
