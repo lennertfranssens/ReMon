@@ -3856,7 +3856,7 @@ extern "C" void* ipmon_register_thread()
 	// TODO: instead of allow, return the glibc_syscall_ret_ptr
 
 	// Define empty BPF-filter while starting variant
-	// struct sock_filter filter[] = {
+	struct sock_filter filter[] = {
 	// 	/* [0] Load the return address from 'seccomp_data' buffer into accumulator */
 	// 	BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
 	// 	/* [1][A] Jump forward B-A-1 instructions if return address does not match the syscall address. */
@@ -3902,7 +3902,7 @@ extern "C" void* ipmon_register_thread()
 	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
 	{
 		perror("ERROR");
-		warnf("Couldn't enable seccomp BPF-filtering\n");
+		//warnf("Couldn't enable seccomp BPF-filtering\n");
 	}
 
 #ifdef MVEE_IP_PKU_ENABLED
@@ -3979,14 +3979,14 @@ void __attribute__((constructor)) init()
 {
 	// We don't want to recalculate the syscall mask if we've already registered
 	// an IP-MON for this process.
-	if (ipmon_initialized && 
-		is_ipmon_kernel_compatible())
+	if (ipmon_initialized /*&& 
+		is_ipmon_kernel_compatible()*/)
 	{
 		ipmon_register_thread();
 		return;
 	}
 
-	if (!is_ipmon_kernel_compatible())
+	/*if (!is_ipmon_kernel_compatible())
 	{
 		printf("WARNING: IP-MON has been activated through the use_ipmon setting in MVEE.ini,\n");
 		printf("WARNING: but we could not detect an IP-MON-compatible kernel.\n");
@@ -3994,7 +3994,7 @@ void __attribute__((constructor)) init()
 		printf("WARNING: Please refer to MVEE/README.txt for instruction on how to build an\n");
 		printf("WARNING: IP-MON compatible kernel.\n");
 		return;
-	}
+	}*/
 
 	ipmon_initialized = true;
 	syscall_ordering_mutex.hack = 0;
