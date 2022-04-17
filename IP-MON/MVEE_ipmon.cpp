@@ -3829,9 +3829,9 @@ extern "C" void* ipmon_register_thread()
 	// Register IP-MON
 	// TODO: Change to a fake syscall because we don't use the kernel patch anymore
 	long glibc_syscall_ret_ptr = ipmon_checked_syscall(MVEE_REGISTER_IPMON,
-									 //kernelmask, 
-									 //ROUND_UP(__NR_syscalls, 8) / 8, 
-									 //RB, 
+									 kernelmask, 
+									 ROUND_UP(__NR_syscalls, 8) / 8, 
+									 RB, 
 #ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
 									 ipmon_enclave_entrypoint_alternative
 #else
@@ -3888,7 +3888,9 @@ extern "C" void* ipmon_register_thread()
 		//          Return trace
 		// FALSE:
 		//      Return trace
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
+
+		// TODO: Fix RET_TRACE VALUE
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 	};
 
 	// Set BPF-filter
