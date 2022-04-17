@@ -7623,7 +7623,7 @@ CALL(mmap)
 		if (info_filename.length() >= libipmonso.length() && info_filename.compare(info_filename.length() - libipmonso.length(), libipmonso.length(), libipmonso) == 0)
 		{
 			debugf("INFO: fd_info path name is %s\n", info_filename.c_str());
-			unsigned long address = set_mmap_table->calculate_data_mapping_base_in_16_bits(ARG2(0));
+			/*unsigned long address = set_mmap_table->calculate_data_mapping_base_in_16_bits(ARG2(0));
 
 			for (int i = 0; i < mvee::numvariants; ++i)
 			{
@@ -7638,7 +7638,7 @@ CALL(mmap)
 					   (int)ARG5(i),
 					   (unsigned long)ARG6(i));
 			}
-            return MVEE_CALL_ALLOW;
+            return MVEE_CALL_ALLOW;*/
 		}
 #endif
 

@@ -631,6 +631,66 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 #ifdef USE_IPMON
                 variants[variantnum].ipmon_active                   = true;
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
+
+                // inspect the list of syscalls
+                unsigned char* ipmon_mask = rw::read_data(variants[0].variantpid, (void*) ARG2(0), ARG3(0));
+                SYSCALL_MASK(dummy_mask);
+
+                if (ipmon_mask)
+                {
+                    if (ARG3(0) >= sizeof(dummy_mask))
+                    {
+#ifdef __NR_mmap
+                        if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_mmap))
+                            ipmon_mmap_handling = true;
+#endif
+#ifdef __NR_mmap2
+                        if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_mmap2))
+                            ipmon_mmap_handling = true;
+#endif
+                        if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_open))
+                            ipmon_fd_handling = true;
+                    }
+                    
+                    debugf("IP-MON handling mmap: %d - fd: %d\n", ipmon_mmap_handling, ipmon_fd_handling);
+
+                    delete[] ipmon_mask;
+                }
+
+                
+                if (!ipmon_buffer) 
+                {
+                    warnf("prctl(PR_REGISTER_IPMON) called, but the IP-MON buffer was not yet initialized");
+                    return 0;
+                }
+
+                // Write the IP-MON buffer header
+                struct ipmon_buffer* buffer = (struct ipmon_buffer*) ipmon_buffer->ptr;
+
+                // The first cacheline contains the key, number of variants and usable size.
+                // Then we have one cacheline for each variant to store its current position within the IP-MON buffer
+                unsigned usable_size = ipmon_buffer->sz - 64 * (1 + mvee::numvariants);
+                buffer->ipmon_numvariants = mvee::numvariants;
+                buffer->ipmon_usable_size = usable_size;
+
+                // remember the base addresses and keys for IP-MON
+                for (int i = 0; i < mvee::numvariants; ++i)
+                {
+                    unsigned long ip;
+
+                    if (!interaction::fetch_ip(variants[i].variantpid, ip))
+                        throw RwRegsFailure(i, "fetch IP-MON registration site");
+
+                    variants[i].ipmon_region = set_mmap_table->get_region_info(i, ip, 0);
+                    debugf("Initializing IP-MON - IP: 0x" PTRSTR "\n", ip);
+                    if (variants[i].ipmon_region)
+                        variants[i].ipmon_region->print_region_info("> IP-MON REGION: ");
+                }
+
+                debugf("IP-MON initialized\n");
+                ipmon_initialized = true;
+                
+
 #else
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 #endif
