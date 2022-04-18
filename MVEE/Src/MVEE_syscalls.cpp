@@ -263,7 +263,8 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 			case MVEE_DISABLE_XCHECKS:
             case MVEE_REGISTER_IPMON:
             {
-                // TODO: Handle registration of ipmon here
+                // TODO: Handle registration of ipmon in call_call_dispatch_unsynced
+                result = MVEE_CALL_TYPE_UNSYNCED;
                 break;
             }
 			case MVEE_GET_LEADER_SHM_TAG:
@@ -633,7 +634,7 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 
                 // inspect the list of syscalls
-                unsigned char* ipmon_mask = rw::read_data(variants[0].variantpid, (void*) ARG2(0), ARG3(0));
+                unsigned char* ipmon_mask = rw::read_data(variants[variantnum].variantpid, (void*) ARG2(0), ARG3(0));
                 SYSCALL_MASK(dummy_mask);
 
                 if (ipmon_mask)
@@ -689,8 +690,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 
                 debugf("IP-MON initialized\n");
                 ipmon_initialized = true;
-                
-
 #else
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 #endif

@@ -7623,8 +7623,9 @@ CALL(mmap)
 		if (info_filename.length() >= libipmonso.length() && info_filename.compare(info_filename.length() - libipmonso.length(), libipmonso.length(), libipmonso) == 0)
 		{
 			debugf("INFO: fd_info path name is %s\n", info_filename.c_str());
-			/*unsigned long address = set_mmap_table->calculate_data_mapping_base_in_16_bits(ARG2(0));
+			unsigned long address = set_mmap_table->calculate_data_mapping_base_in_16_bits(ARG2(0));
 
+			// TODO: Only do this for the variant that invokes this syscall (see comment block below this code)
 			for (int i = 0; i < mvee::numvariants; ++i)
 			{
 				call_overwrite_arg_value(i, 1, address, true);
@@ -7638,7 +7639,19 @@ CALL(mmap)
 					   (int)ARG5(i),
 					   (unsigned long)ARG6(i));
 			}
-            return MVEE_CALL_ALLOW;*/
+
+			/*call_overwrite_arg_value(0, 1, address, true);
+
+			debugf("%s - replaced call by SYS_MMAP(0x" PTRSTR ", %lu, %s, %s, %d, %lu)\n",
+					call_get_variant_pidstr(0).c_str(),
+					address,
+					(unsigned long)ARG2(0),
+					getTextualProtectionFlags(ARG3(0)).c_str(),
+					getTextualMapType(ARG4(0)).c_str(),
+					(int)ARG5(0),
+					(unsigned long)ARG6(0));*/
+
+            return MVEE_CALL_ALLOW;
 		}
 #endif
 
