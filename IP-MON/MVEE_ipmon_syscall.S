@@ -59,6 +59,8 @@ FUNCTION_START(ipmon_unchecked_syscall)
 		mov r10, r8
 		mov r8, r9
 		mov r9, QWORD PTR [rsp + 8]
+		.globl ipmon_unchecked_syscall_ptr;
+		.type ipmon_unchecked_syscall_ptr,@tls_object;
 		syscall
 		ret
 FUNCTION_END(ipmon_unchecked_syscall)
@@ -228,7 +230,8 @@ Outgoing Stack:
 		+00 enclave entrypoint return address
 		+08 arg5
 		+16 arg6
------------------------------------------------------------------------------*/		
+-----------------------------------------------------------------------------*/
+		.align 4096									// algin 4096 to get the 12 most lsbs to 0	
 FUNCTION_START_EXPORTED(ipmon_enclave_entrypoint_alternative)
 		
 		push rbp
