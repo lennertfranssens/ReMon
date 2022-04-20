@@ -3627,6 +3627,11 @@ extern "C" long ipmon_enclave
 	args.arg6 = arg6;
 	args.entry = NULL;
 
+	// TODO: Fix errors when executing the "original" ipmon_enclave function (errors when calling ipmon_prepare_syscall
+	// and when using both checked and unchecked)
+	long ret = ipmon_unchecked_syscall(syscall_no, args.arg1, args.arg2, args.arg3, args.arg4, args.arg5, args.arg6);
+	return ret;
+
 #ifdef MVEE_IP_PKU_ENABLED
 	// erim_switch_to_trusted is moved inside the kernel (sys_ipmon_invoke)
 	// otherwise we open the following attack window:
@@ -3665,7 +3670,7 @@ extern "C" long ipmon_enclave
 		return ret;
 	}
 
-	// If the syscall is not registered as a possibly unchecked syscall,
+/*	// If the syscall is not registered as a possibly unchecked syscall,
 	// then we can skip the policy checks and replication logic altogether.
 	//
 	// Do note that even if we did decide to let the call through,
@@ -3677,7 +3682,7 @@ extern "C" long ipmon_enclave
 		erim_switch_to_untrusted;
 #endif
 		return ret;
-	}
+	}*/
 
 	// Certain syscalls are always harmless and should bypass both the ptracer
 	// and the IP-MON's replication logic. Examples of such calls are
@@ -3792,13 +3797,15 @@ void ipmon_rb_probe()
     ipmon_unchecked_syscall_ptr - defined in MVEE_ipmon_syscall.S. This is where
 	IP-MON will call the syscall instruction of a syscall on the IP-MON whitelist
 -----------------------------------------------------------------------------*/
-extern "C" unsigned int * ipmon_unchecked_syscall_ptr;
+extern "C" void ipmon_unchecked_syscall_instr();
+extern "C" void ipmon_checked_syscall_instr();
 
 /*-----------------------------------------------------------------------------
     ipmon_register_thread - IP-MON registration is thread-local now!
 -----------------------------------------------------------------------------*/
 extern "C" void* ipmon_register_thread()
 {
+	printf("INFO: ipmon_register_thread line 3802\n");
 	int rb_size;
 	void* RB = (void*)ipmon_checked_syscall(__NR_shmat,
 											ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/),
@@ -3811,6 +3818,7 @@ extern "C" void* ipmon_register_thread()
 		return NULL;
 	}
 
+	printf("INFO: ipmon_register_thread line 3815\n");
 	// printf("Replication buffer mapped @ 0x%016lx\n", RB);
 
 	// Attach to the regfile map. This one is process-wide but might still be mapped after forking! 
@@ -3827,6 +3835,8 @@ extern "C" void* ipmon_register_thread()
 			return NULL;
 		}
 	}
+
+	printf("INFO: ipmon_register_thread line 3833\n");
 
 	// This syscall returns the thread number within the variant set and can
 	// optonally also set the variant number
@@ -3853,106 +3863,6 @@ extern "C" void* ipmon_register_thread()
 //		exit(-1);
 		return NULL;
 	}*/
-
-	// BPF-filter setup
-	int A = 1,
-		B = 10,
-		C = 12,
-		D = 22;
-
-	// TODO: Change entry to specific address of an unchecked ipmon syscall instruction
-	unsigned int * ipmon_syscall_instruction = ipmon_unchecked_syscall_ptr;
-	uintptr_t ipmon_enclave_entrypoint = (uintptr_t)ipmon_enclave_entrypoint_alternative;
-	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
-	unsigned int ipmon_enclave_entrypoint_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint) >> 12;
-
-	// Define empty BPF-filter while starting variant
-	struct sock_filter filter[] = {
-		/* [0] Load the instruction pointer from 'seccomp_data' buffer into accumulator */
-		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
-		/* [1][A] Jump forward C-A-1 instructions if instruction pointer does not match 
-		the ipmon syscall address. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)ipmon_enclave_entrypoint, 0, (unsigned char)(C-A-1)),
-		/* [2] Load system call number from 'seccomp_data' buffer into accumulator. */
-		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
-		/* [3-9] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettid, 1, 0),
-		/* [10][B] Jump forward D-B-1 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, (unsigned char)(D-B-1)), // TODO: Change back to __NR_getuid
-		/* [11] Execute the system call */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-		/* [12][C] Load system call number from 'seccomp_data' buffer into accumulator. */
-		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
-		/* [13-19] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_gettid, 1, 0),
-		/* [20] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1), // TODO: Change back to __NR_getuid
-		/* [21] Return the ipmon syscall entry address */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_in_16_bits & SECCOMP_RET_DATA)),
-		/* [22][D] Execute the system call in tracer */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
-
-		// /* [0] Load the return address from 'seccomp_data' buffer into accumulator */
-		// BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
-		// /* [1][A] Jump forward B-A-1 instructions if return address does not match the syscall address. */
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (unsigned int)entry, 0, (unsigned char)B_A_1),
-		// /* [2] Load system call number from 'seccomp_data' buffer into accumulator. */
-		// BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
-		// /* [3-9] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpid, 7, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getegid, 6, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_geteuid, 5, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getgid, 4, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getpgrp, 3, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getppid, 2, 0),
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0), // TODO: change to gettid to test
-		// /* [10] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
-		// BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_getuid, 0, 1),
-		// /* [11] Execute the system call */
-		// BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-		// /* [12][B] Execute the system call in tracer */
-		// BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
-
-
-		// Check if return address is from syscall instruction in glibc
-		// TRUE:
-		//  Execute filter. Can we allow the syscall?
-		//      True:
-		//          Allow
-		//      FALSE:
-		//          Return trace
-		// FALSE:
-		//      Return trace
-
-		// TODO: Fix RET_TRACE VALUE
-		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
-	};
-
-	// Set BPF-filter
-	struct sock_fprog prog = {
-		(unsigned short)(sizeof(filter) / sizeof(filter[0])),
-		filter,
-	};
-
-	// Enable seccomp BPF-filtering
-	//if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
-	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
-	{
-		perror("ERROR");
-		//warnf("Couldn't enable seccomp BPF-filtering\n");
-	}
 
 #ifdef MVEE_IP_PKU_ENABLED
 	// erim_switch_to_trusted is moved inside the kernel (sys_prctl with PR_REGISTER_IPMON as argument)
@@ -4002,6 +3912,101 @@ extern "C" void* ipmon_register_thread()
 		printf("ERROR: IP-MON RB registration failed. pkey_mprotect returned -1.");
 #endif
 
+		// BPF-filter setup
+	int A = 1,
+		B = 2,
+		C = 11,
+		D = 13,
+		E = 23;
+
+	// TODO: Change entry to specific address of an unchecked ipmon syscall instruction
+	//__u64 ipmon_syscall_instruction = ipmon_unchecked_syscall_ptr;
+#ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
+	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint_alternative;
+#else
+	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint;
+#endif
+
+	printf("INFO: ipmon_register_thread line 3875\n");
+
+	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
+	unsigned int ipmon_enclave_entrypoint_ptr_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint_ptr) >> 12;
+
+	printf("INFO: ipmon_enclave_entrypoint_ptr_in_16_bits = %x\n", ipmon_enclave_entrypoint_ptr_in_16_bits);
+
+	uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
+	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer
+	printf("INFO: ipmon_unchecked_syscall_instr_ptr = 0x%x\n", ((__u32*)&ipmon_unchecked_syscall_instr_ptr)[0]);
+
+	uintptr_t ipmon_checked_syscall_instr_ptr = (uintptr_t)ipmon_checked_syscall_instr;
+	ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer
+	printf("INFO: ipmon_checked_syscall_instr_ptr = 0x%x\n", ((__u32*)&ipmon_checked_syscall_instr_ptr)[0]);
+
+	// Define empty BPF-filter while starting variant
+	struct sock_filter filter[] = {
+		/* [0] Load the instruction pointer from 'seccomp_data' buffer into accumulator */
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, instruction_pointer))),
+		/* [1][A] Jump forward to the next if instruction pointer does not match 
+		the ipmon checked syscall instruction address. If it matches, we need to trace (E-A-1) */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ((__u32*)&ipmon_checked_syscall_instr_ptr)[0], (unsigned char)(E-A-1), 0),
+		/* [2][B] Jump forward C-A-1 instructions if instruction pointer does not match 
+		the ipmon unchecked syscall instruction address. */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ((__u32*)&ipmon_unchecked_syscall_instr_ptr)[0], 0, (unsigned char)(D-B-1)),
+		/* [3] Load system call number from 'seccomp_data' buffer into accumulator. */
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+		/* [4-10] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 7, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 6, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 5, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 4, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 3, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 2, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0),
+		/* [11][C] Jump forward E-C-1 instructions if system call number does not match '__NR_XXX'. */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, (unsigned char)(E-C-1)), // TODO: Change back to __NR_getuid
+		/* [12] Execute the system call */
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), // SECCOMP_RET_TRACE to check if the filter works
+		/* [13][D] Load system call number from 'seccomp_data' buffer into accumulator. */
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+		/* [14-20] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 7, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 6, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 5, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 4, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 3, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 2, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0),
+		/* [21] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1), // TODO: Change back to __NR_getuid
+		/* [22] Return the ipmon syscall entry address */
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ipmon_enclave_entrypoint_ptr_in_16_bits & SECCOMP_RET_DATA)),
+		/* [23][E] Execute the system call in tracer */
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+
+		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
+	};
+
+	printf("INFO: ipmon_register_thread line 3923\n");
+
+	// Set BPF-filter
+	struct sock_fprog prog = {
+		(unsigned short)(sizeof(filter) / sizeof(filter[0])),
+		filter,
+	};
+
+	printf("INFO: ipmon_register_thread line 3929\n");
+
+	// Enable seccomp BPF-filtering
+	//if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
+	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
+	{
+		perror("ERROR");
+		//warnf("Couldn't enable seccomp BPF-filtering\n");
+	}
+
+	printf("INFO: ipmon_register_thread line 3970\n");
+
+	printf("INFO: ipmon_register_thread line 4019\n");
 	return RB;
 }
 

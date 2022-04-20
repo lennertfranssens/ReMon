@@ -41,6 +41,28 @@ ipmon_initialized:
 
 
 /*-----------------------------------------------------------------------------
+	ipmon_unchecked_syscall_instr - Syscall instruction that is executed when 
+	ipmon_unchecked_syscall is executed.
+
+TODO:	 This function should be inlined in the C code!!
+-----------------------------------------------------------------------------*/
+FUNCTION_START(ipmon_unchecked_syscall_instr)
+		syscall
+		ret
+FUNCTION_END(ipmon_unchecked_syscall_instr)
+
+/*-----------------------------------------------------------------------------
+	ipmon_checked_syscall_instr - Syscall instruction that is executed when 
+	ipmon_checked_syscall is executed.
+
+TODO:	 This function should be inlined in the C code!!
+-----------------------------------------------------------------------------*/
+FUNCTION_START(ipmon_checked_syscall_instr)
+		syscall
+		ret
+FUNCTION_END(ipmon_checked_syscall_instr)
+
+/*-----------------------------------------------------------------------------
 	ipmon_unchecked_syscall - The IP-MON key now always "lives" in register r12.
 	We prevent the compiler from moving it/overwriting it by passing -ffixed-r12
 	on the command line.
@@ -59,9 +81,7 @@ FUNCTION_START(ipmon_unchecked_syscall)
 		mov r10, r8
 		mov r8, r9
 		mov r9, QWORD PTR [rsp + 8]
-		.globl ipmon_unchecked_syscall_ptr;
-		.type ipmon_unchecked_syscall_ptr,@tls_object;
-		syscall
+		call ipmon_unchecked_syscall_instr@plt
 		ret
 FUNCTION_END(ipmon_unchecked_syscall)
 
@@ -88,7 +108,7 @@ FUNCTION_START(ipmon_checked_syscall)
 		mov r13, r12
 		xor r12, r12
 		
-		syscall
+		call ipmon_checked_syscall_instr@plt
 
 		// We might want to use the IP-MON key later (for futex etc)
 		mov r12, r13
@@ -233,7 +253,6 @@ Outgoing Stack:
 -----------------------------------------------------------------------------*/
 		.align 4096									// algin 4096 to get the 12 most lsbs to 0	
 FUNCTION_START_EXPORTED(ipmon_enclave_entrypoint_alternative)
-		
 		push rbp
 		.cfi_adjust_cfa_offset 8
 		push rdx
