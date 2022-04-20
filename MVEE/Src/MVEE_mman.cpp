@@ -34,6 +34,8 @@
 #include "MVEE_private_arch.h"
 #include "MVEE_macros.h"
 
+static int base_addr = 0x200000;
+
 /*-----------------------------------------------------------------------------
     mmap_region_info class
 -----------------------------------------------------------------------------*/
@@ -1114,6 +1116,7 @@ unsigned long mmap_table::find_image_base (int variantnum, std::string image_nam
 -----------------------------------------------------------------------------*/
 void mmap_table::calculate_disjoint_bases (unsigned long size, std::vector<unsigned long>& bases)
 {
+    warnf("hallo lennert\n");
     std::set<mmap_region_info*, region_sort>           merged_regions;
     std::set<mmap_region_info*, region_sort>::iterator it;
     std::set<mmap_region_info*, region_sort>::iterator it2;
@@ -1362,6 +1365,271 @@ void mmap_table::calculate_disjoint_bases (unsigned long size, std::vector<unsig
 }
 
 /*-----------------------------------------------------------------------------
+    calculate_disjoint_bases - The monitor has seen a new mmap call
+    that maps in code. We want to:
+    1) force strong randomization => ASLR will only randomize the 16 higher
+    order bits of the base address
+    2) force disjunct code regions => no pointer should ever reference a valid
+    code region in more than one variant
+-----------------------------------------------------------------------------*/
+void mmap_table::calculate_disjoint_bases_16_bits_version (unsigned long size, std::vector<unsigned long>& bases)
+{
+    
+    debugf("INFO: base_addr = 0x%x\n", base_addr);
+    bases[0] = base_addr;
+    bases[1] = base_addr;
+    base_addr += size;
+
+
+
+    /*std::set<mmap_region_info*, region_sort>           merged_regions;
+    std::set<mmap_region_info*, region_sort>::iterator it;
+    std::set<mmap_region_info*, region_sort>::iterator it2;
+    std::set<mmap_region_info*, region_sort>::iterator prev;
+
+    // step 0: Attempt to enlarge each variant's stack to stack_limit size so
+    // we don't accidentally map anything too close to the stack, preventing it
+    // from growing to its maximum size...
+    //
+    // We only have to do this ONCE!
+    unsigned long                                      stack_limit = mvee::os_get_stack_limit();
+    // TODO: Should we also do this for thread stacks? I don't know if
+    // they have the same stack limit...
+    if (stack_limit && !enlarged_initial_stacks)
+    {
+//		warnf("stack limit: %lu\n", stack_limit);
+        enlarged_initial_stacks = 1;
+		unsigned long stack_top = 0;
+        for (int i = 0; i < mvee::numvariants; ++i)
+        {
+            mmap_region_info* stack                    = NULL;
+            mmap_region_info* first_region_below_stack = NULL;
+            it = full_map[i].end();
+            --it;
+            while (true)
+            {
+                if (!stack)
+                {
+                    if ((*it)->region_backing_file_path == "[stack]")
+					{
+                        stack = *it;
+						stack_top = stack->region_base_address + stack->region_size;
+					}
+                }
+                else
+                {
+					// some NUTJOB could've split the stack in two,
+					// e.g. by making it partially executable
+                    if ((*it)->region_backing_file_path == "[stack]")
+					{
+                        stack = *it;
+					}
+					else
+					{
+						first_region_below_stack = *it;
+						break;
+					}
+                }
+
+                if (it == full_map[i].begin())
+                    break;
+
+                --it;
+            }
+
+            // now enlarge it
+            if (stack)
+            {
+//				stack->print_region_info("stack > ", mvee::warnf);
+
+                // it should not overlap with anything that had been mapped below the stack before we could apply DCL
+                if (first_region_below_stack && (first_region_below_stack->region_base_address + first_region_below_stack->region_size > (stack_top - stack_limit - PAGE_SIZE))) // minus PAGE_SIZE b/c of the guard page
+                {
+					unsigned long previous_region_top = first_region_below_stack->region_base_address + first_region_below_stack->region_size;
+
+                    stack->region_size         = (stack->region_base_address + stack->region_size) - previous_region_top;
+                    stack->region_base_address = previous_region_top;
+                }
+                // OK. No overlaps => just enlarge to stack limit
+                else
+                {
+//					warnf("enlarged stack\n");
+
+					// account for the guard page below the stack!!!
+					unsigned long old_base     = stack->region_base_address;
+                    stack->region_base_address = stack_top - stack_limit - PAGE_SIZE;
+                    stack->region_size         += (old_base - stack->region_base_address);
+                }
+            }
+        }
+    }
+
+
+    // step 1: temporarily merge all existing code regions into one set
+    // warnf("calculating disjunct code bases for this mmap call - size = %d bytes\n", size);
+    for (int i = 0; i < mvee::numvariants; ++i)
+    {
+        for (it = full_map[i].begin();
+             it != full_map[i].end();
+             ++it)
+        {
+            // code region => copy into merged_regions set
+            if (((*it)->region_prot_flags & PROT_EXEC)
+                && (*it)->region_backing_file_path != "[vsyscall]"
+                && (*it)->region_backing_file_path.find("MVEE_LD_Loader") == std::string::npos)
+            {
+                mmap_region_info* new_region = new mmap_region_info(0, (*it)->region_base_address, (*it)->region_size, 0, NULL, 0, 0);
+
+                if (!merged_regions.insert(new_region).second)
+                {
+                    // the region could already be in the set
+                    SAFEDELETE(new_region);
+                }
+            }
+        }
+    }
+
+    // step 1b: We also add a pseudo-region that indicates the highest possible code address we can use
+    mmap_region_info* pseudo   = new mmap_region_info(0, HIGHEST_USERMODE_ADDRESS - 4096, 4096, 0, NULL, 0, 0);
+
+    // try to insert. Might fail if there's something there already!
+    if (!merged_regions.insert(pseudo).second)
+        SAFEDELETE(pseudo);
+
+    warnf("merged set dump\n");
+    for (it = merged_regions.begin(); it != merged_regions.end(); ++it)
+        warnf("> found region - %p-%p\n", (void*) (*it)->region_base_address,
+                (void*) ((*it)->region_size + (*it)->region_base_address));
+
+    // step 2: fill any holes that are not large enough to contain the new region
+    unsigned long     prev_end = 0;
+    for (it = merged_regions.begin(); it != merged_regions.end(); ++it)
+    {
+        // the gap between the current and the previous region is too small to
+        // contain the new regions we're mmapping
+        // => we fill the gap by creating a new region that spans from the previous
+        // region's base address up till the current region's end address
+        if ((*it)->region_base_address - prev_end < size)
+        {
+            //warnf("gap between regions at: 0x%08x-0x%08x and 0x%08x-0x%08x is too small to contain a new region - filling it up\n",
+            //		(*prev)->region_base_address, (*prev)->region_size + (*prev)->region_base_address,
+            //		(*it)->region_base_address, (*it)->region_size + (*it)->region_base_address);
+
+            // prev might not be initialized here! This happens if the gap between address 0 and the first region
+            // we encounter is not large enough.
+            unsigned long new_size = (*it)->region_base_address + (*it)->region_size;
+
+            // we merge the previous region with this one
+            if (prev_end)
+            {
+                new_size            -= (*prev)->region_base_address;
+                delete *it;
+                merged_regions.erase(it);
+                (*prev)->region_size = new_size;
+                prev_end             = (*prev)->region_base_address + (*prev)->region_size;
+                it                   = prev;
+            }
+            // no previous region, just adjust this one
+            else
+            {
+                (*it)->region_base_address = 0;
+                (*it)->region_size         = new_size;
+            }
+        }
+        else
+        {
+            prev     = it;
+            prev_end = (*it)->region_base_address + (*it)->region_size;
+        }
+    }
+
+    // warnf("merged set dump\n");
+    // for (it = merged_regions.begin(); it != merged_regions.end(); ++it)
+    //	warnf("> found region - 0x%08x-0x%08x\n", (*it)->region_base_address, (*it)->region_size + (*it)->region_base_address);
+
+    // step 3: for each variant, find a new base address that:
+    // > a) does not overlap with code addresses in any other variants
+    // > b) does not overlap with any regions in the variant itself
+    mmap_region_info test_region(0, 0, 0, 0, NULL, 0, 0);
+    for (int i = 0; i < mvee::numvariants; ++i)
+    {
+        // get the highest available code address
+        it                              = merged_regions.end();
+        it--;
+
+        // warnf("testing base: 0x%08x for variant: %d\n", ((*it)->region_base_address - size) & ~4095, i);
+
+        // Try to place the region just before the highest mapped region. This will
+        // probably be the pseudo-region we added in step 1b
+        test_region.region_base_address = ((*it)->region_base_address - size) & ~4095;
+        test_region.region_size         = size;
+
+        while (1)
+        {
+            // First check if this address is still available within the variant's own address space
+            // If it is not available, find the lowest address that IS available
+            while ((it2 = full_map[i].find(&test_region))
+                   != full_map[i].end())
+            {
+                // warnf("overlap found within own address space. Adjusting\n");
+
+                if (size > (*it2)->region_base_address)
+                {
+                    warnf("disjoint code layouting failed - there's not enough space left in variant %d's address space to place a region of size: " LONGRESULTSTR "\n", i,                           size);
+                    warnf("we detected overlap with region: 0x" PTRSTR "-0x" PTRSTR " (%s)\n",                                                                         (*it2)->region_base_address, (*it2)->region_base_address +  (*it2)->region_size, (*it2)->region_backing_file_path.c_str());
+                    throw;
+                    return;
+                }
+                // see if we can adjust without overlapping with another code region
+                test_region.region_base_address = ((*it2)->region_base_address - size) & ~4095;
+            }
+
+            // Now also check if this region would overlap with any code regions we already have
+            // in other variants. If it does overlap, we have to do the whole thing all over again
+            it = merged_regions.find(&test_region);
+            if (it != merged_regions.end())
+            {
+                // after adjustment, the new base now overlaps with another code region
+                // => skip that code region first, then continue looking within
+                // the variant's own address space
+                // warnf("also found overlap with an existing code region at: %08x\n", (*it)->region_base_address);
+
+                if (size > (*it)->region_base_address)
+                {
+                    warnf("disjoint code layouting failed - there's not enough space left in the merged region set to place a code region of size: " LONGRESULTSTR "\n", size);
+                    warnf("we detected overlap with megrged region: 0x" PTRSTR "-0x" PTRSTR "\n",                                                                        (*it)->region_base_address, (*it)->region_base_address +  (*it)->region_size);
+                    throw;
+                    return;
+                }
+                test_region.region_base_address = ((*it)->region_base_address - size) & ~4095;
+            }
+            else
+            {
+                warnf("found %p for %d\n\n",  (void*) test_region.region_base_address, i);
+                break;
+            }
+        }
+
+        // found a good base address
+        bases[i] = test_region.region_base_address;
+
+        // now we insert the region in the merged regions set
+        // so the next variants won't get an overlapping region
+        mmap_region_info* new_region = new mmap_region_info(0, test_region.region_base_address, test_region.region_size, 0, NULL, 0, 0);
+
+        merged_regions.insert(new_region);
+        // warnf("returning region 0x%08x-0x%08x for variant %d\n",
+        //		bases[i], bases[i] + size, i);
+    }
+
+    for (it = merged_regions.begin(); it != merged_regions.end(); ++it)
+        delete (*it);
+
+    merged_regions.clear();
+    //warnf("ALL DONE!\n");*/
+}
+
+/*-----------------------------------------------------------------------------
     mvee_mman_check_vdso_overlap
 -----------------------------------------------------------------------------*/
 int mmap_table::check_vdso_overlap(int variantnum)
@@ -1485,88 +1753,6 @@ unsigned long mmap_table::calculate_data_mapping_base(unsigned long size)
 		}
 	}
 
-	return 0;
-}
-
-/*-----------------------------------------------------------------------------
-    calculate_data_mapping_base_in_16_bits
------------------------------------------------------------------------------*/
- // TODO: Implement this function to get an address that can be accessed with 16 bits only
-unsigned long mmap_table::calculate_data_mapping_base_in_16_bits(unsigned long size)
-{
-	// We only do this for 64-bit platforms.
-	if (sizeof(long) == 4)
-		return 0;
-
-	// find the lowest used address above the mmap_base
-    mmap_region_info tmp_region(0, mmap_base, 0, 0, NULL, 0, 0);
-	auto region_iterator = full_map[0].upper_bound(&tmp_region);
-
-	// if there is no mapping above mmap base
-	if (region_iterator == full_map[0].end() ||
-		// or if the first mapping is outside of our randomized mmap region
-		(*region_iterator)->region_base_address > mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8))
-	{
-        debugf("INFO: if\n");
-		// pick any address within our randomized mmap region
-		std::random_device rd;
-		std::mt19937_64 mt(rd());
-		// we do >> 12 because we want to calculate the page number		
-		std::uniform_int_distribution<unsigned long> distr(mmap_base >> 12, (mmap_base + (HIGHEST_USERMODE_ADDRESS >> 8) - ROUND_UP(size, 4096)) >> 12);
-
-		//
-		// This calculates a random page in the range:
-		//
-		// +-----------------------------------------------------+---------------+
-		// | <---------------  viable addresses ---------------> | <--  size --> |
-		// +-----------------------------------------------------+---------------+
-		//
-		// ^                                                                     ^
-		// |                                                                     |
-		// +-----+                                        +----------------------+
-		//    mmap_base              mmap_base + 1/256th of the usable address space
-		//
-		unsigned long address = distr(mt);
-		// back to a full address
-		address <<= 12;
-
-//		warnf("No mapping found in mmap base zone - selected address: 0x" PTRSTR " - size: %ld\n", address, size);
-
-		// assert that this address is available. It should be if we implement
-		// ASLR control correctly
-		if (is_available_in_all_variants(address, ROUND_UP(size, 4096)))
-			return address;
-	}
-	else
-	{
-        debugf("INFO: else\n");
-		unsigned long address = (*region_iterator)->region_base_address - ROUND_UP(size, 4096);
-
-		// We already have a mapping in our mmap region. See if we can extend it downwards
-		if (address > mmap_base)
-		{
-//			warnf("Mapping found above mmap base - extended downwards address address: 0x" PTRSTR "\n", address);
-
-			// yep
-			if (is_available_in_all_variants(address, ROUND_UP(size, 4096)))
-				return address;
-		}
-		else
-		{
-			// nope... See if we can squeeze this region in somewhere
-			auto prev_region = region_iterator;
-			for (region_iterator = ++region_iterator; region_iterator != full_map[0].end(); ++region_iterator)
-			{
-				// Found a hole to squeeze this region in
-				if ((*region_iterator)->region_base_address - ((*prev_region)->region_base_address + (*prev_region)->region_size) > size)
-				{
-					if (is_available_in_all_variants((*region_iterator)->region_base_address - ROUND_UP(size, 4096), ROUND_UP(size, 4096)))
-						return (*region_iterator)->region_base_address - ROUND_UP(size, 4096);
-				}
-			}
-		}
-	}
-    debugf("INFO: returning 0\n");
 	return 0;
 }
 

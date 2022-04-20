@@ -1135,32 +1135,47 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
     // TODO: LF: Remove the following 3 lines.
     __ptrace_syscall_info syscall_info{};
     ptrace(PTRACE_GET_SYSCALL_INFO, variants[index].variantpid, sizeof(syscall_info), &syscall_info);
-    debugf("INFO: syscall_info = %hhu\t\t(PTRACE_SYSCALL_INFO_ENTRY = %hhu, PTRACE_SYSCALL_INFO_EXIT = %hhu, PTRACE_SYSCALL_INFO_SECCOMP = %hhu)\n", syscall_info.op, PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP);
+    std::string s;
+    switch (syscall_info.op) {
+        case PTRACE_SYSCALL_INFO_ENTRY: {
+            s = "PTRACE_SYSCALL_INFO_ENTRY";
+            break;
+        }
+        case PTRACE_SYSCALL_INFO_EXIT: {
+            s = "PTRACE_SYSCALL_INFO_EXIT";
+            break;
+        }
+        case PTRACE_SYSCALL_INFO_SECCOMP: {
+            s = "PTRACE_SYSCALL_INFO_SECCOMP";
+            break;
+        }
+        default: {
+            s = "UNKNOWN";
+            break;
+        }
+    }
+    debugf("INFO: syscall_info = %s\n", s.c_str());
 
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
     {
-        debugf("Line 1143\n");
         handle_exit_event(index);
         return;
     }
 #ifdef USE_IPMON
     else if (variants[index].ipmon_active && status.reason == STOP_SECCOMP)
 	{
-        debugf("Line 1150\n");
 		handle_seccomp_event(index);
 		return;
 	}
 #endif
     else if (status.reason == STOP_SYSCALL)
 	{
-        debugf("Line 1157\n");
 		handle_syscall_event(index);
 		return;
 	}
 	else if (status.reason == STOP_FORK)
 	{
-        debugf("Line 1163\n");
 		handle_fork_event(index, status);
 		return;
 	}
@@ -1168,13 +1183,11 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	{
 		if (status.data == SIGTRAP)
 		{
-            debugf("Line 1171\n");
 			handle_trap_event(index);
 		}
 #ifdef MVEE_ARCH_HAS_RDTSC
 		else if (status.data == SIGSEGV)
 		{
-            debugf("Line 1177\n");
 			if (handle_rdtsc_event(index))
 				return;
 		}
@@ -1183,13 +1196,11 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 		{
 			if (state == STATE_WAITING_ATTACH && !variants[index].variant_attached)
             {
-                debugf("Line 1186\n");
                 handle_attach_event(index);
                 return;
             }
             if (state == STATE_WAITING_RESUME && !variants[index].variant_resumed)
             {
-                debugf("Line 1192\n");
                 handle_resume_event(index);
                 return;
             }
@@ -1197,12 +1208,10 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 	}
 	else if (status.reason == STOP_EXECVE)
 	{
-        debugf("Line 1200\n");
 		call_resume(index);
 		return;
 	}
 
-    debugf("Line 1205\n");
 	handle_signal_event(index, status);
 }
 
