@@ -6961,7 +6961,6 @@ CALL(prctl)
     }
 	else if (ARG1(0) == PR_REGISTER_IPMON)
 	{
-		// TODO: move this to the MVEE_syscalls.cpp fake syscall handler
 		// inspect the list of syscalls
 		unsigned char* ipmon_mask = rw::read_data(variants[0].variantpid, (void*) ARG2(0), ARG3(0));
 		SYSCALL_MASK(dummy_mask);
@@ -7038,6 +7037,8 @@ POSTCALL(prctl)
 		ipmon_initialized = true;
     }
 #endif
+
+debugf("INFO: Test Lennert\n");
 
     return 0;
 }

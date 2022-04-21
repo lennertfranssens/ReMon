@@ -633,7 +633,7 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                 variants[variantnum].ipmon_active                   = true;
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 
-                // inspect the list of syscalls
+                /*// inspect the list of syscalls
                 unsigned char* ipmon_mask = rw::read_data(variants[variantnum].variantpid, (void*) ARG2(0), ARG3(0));
                 SYSCALL_MASK(dummy_mask);
 
@@ -656,12 +656,12 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                     debugf("IP-MON handling mmap: %d - fd: %d\n", ipmon_mmap_handling, ipmon_fd_handling);
 
                     delete[] ipmon_mask;
-                }
+                }*/
 
                 
                 if (!ipmon_buffer) 
                 {
-                    warnf("prctl(PR_REGISTER_IPMON) called, but the IP-MON buffer was not yet initialized");
+                    warnf("syscall(MVEE_REGISTER_IPMON) called, but the IP-MON buffer was not yet initialized");
                     return 0;
                 }
 
