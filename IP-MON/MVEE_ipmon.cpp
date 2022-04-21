@@ -71,6 +71,7 @@
 extern "C" unsigned char ipmon_initialized; // MVEE_ipmon_syscall.S
 unsigned char            ipmon_kernel_compatible = 0;
 unsigned char            ipmon_variant_num       = 0;
+thread_local struct ipmon_buffer* ipmon_RB       = 0;
 
 //
 // Mask of syscalls that may be handled by IP-MON and bypass the ptracer
@@ -3605,9 +3606,6 @@ ipmon_buffer* secret_ipmon_buffer_pointer = NULL;
 -----------------------------------------------------------------------------*/
 extern "C" long ipmon_enclave
 (
-#ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
-	ipmon_buffer* RB,
-#endif
 	unsigned long syscall_no,
 	unsigned long arg1,
 	unsigned long arg2,
@@ -3617,6 +3615,7 @@ extern "C" long ipmon_enclave
 	unsigned long arg6
 )
 {
+	ipmon_buffer* RB = ipmon_RB;
 	long result;
 	struct ipmon_syscall_args args;
 	args.arg1 = arg1;
@@ -3625,12 +3624,7 @@ extern "C" long ipmon_enclave
 	args.arg4 = arg4;
 	args.arg5 = arg5;
 	args.arg6 = arg6;
-	args.entry = NULL;
-
-	// TODO: Fix errors when executing the "original" ipmon_enclave function (errors when calling ipmon_prepare_syscall
-	// and when using both checked and unchecked)
-	long ret = ipmon_unchecked_syscall(syscall_no, args.arg1, args.arg2, args.arg3, args.arg4, args.arg5, args.arg6);
-	return ret;
+	args.entry = NULL;	
 
 #ifdef MVEE_IP_PKU_ENABLED
 	// erim_switch_to_trusted is moved inside the kernel (sys_ipmon_invoke)
@@ -3646,7 +3640,7 @@ extern "C" long ipmon_enclave
 	// erim_switch_to_untrusted;
 #endif
 
-	// check if we need to reinitialize
+	/*// check if we need to reinitialize
 	// The kernel sets the highest bit of the RB pointer after every fork/clone
 	// Check if the highest bit is set
 	if ((unsigned long)RB & (1UL<<(sizeof(unsigned long)*8 - 1))) {
@@ -3659,7 +3653,7 @@ extern "C" long ipmon_enclave
 		ipmon_checked_syscall(__NR_shmdt, ipmon_reg_file_map); // detach from parent's file map
 
 		RB = (ipmon_buffer *) ipmon_register_thread();
-	}
+	}*/
 
 	// In signal handler
 	if (RB->have_pending_signals & 2) {
@@ -3670,7 +3664,7 @@ extern "C" long ipmon_enclave
 		return ret;
 	}
 
-/*	// If the syscall is not registered as a possibly unchecked syscall,
+	/*// If the syscall is not registered as a possibly unchecked syscall,
 	// then we can skip the policy checks and replication logic altogether.
 	//
 	// Do note that even if we did decide to let the call through,
@@ -3805,21 +3799,19 @@ extern "C" void ipmon_checked_syscall_instr();
 -----------------------------------------------------------------------------*/
 extern "C" void* ipmon_register_thread()
 {
-	printf("INFO: ipmon_register_thread line 3802\n");
 	int rb_size;
-	void* RB = (void*)ipmon_checked_syscall(__NR_shmat,
+	ipmon_RB = (ipmon_buffer*)ipmon_checked_syscall(__NR_shmat,
 											ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/),
 											NULL, 0);
 
-	if (!RB)
+	if (!ipmon_RB)
 	{
 		printf("ERROR: IP-MON registration failed. Could not attach to Replication Buffer\n");
 		exit(-1);
 		return NULL;
 	}
 
-	printf("INFO: ipmon_register_thread line 3815\n");
-	// printf("Replication buffer mapped @ 0x%016lx\n", RB);
+	// printf("Replication buffer mapped @ 0x%016lx\n", ipmon_RB);
 
 	// Attach to the regfile map. This one is process-wide but might still be mapped after forking! 
 	long mvee_regfile_id = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_REG_FILE_MAP, NULL, NULL, NULL, NULL);
@@ -3836,33 +3828,22 @@ extern "C" void* ipmon_register_thread()
 		}
 	}
 
-	printf("INFO: ipmon_register_thread line 3833\n");
-
 	// This syscall returns the thread number within the variant set and can
 	// optonally also set the variant number
 	ipmon_checked_syscall(MVEE_GET_THREAD_NUM, &ipmon_variant_num);
 
-	// Register IP-MON
-	// TODO: Change to a fake syscall because we don't use the kernel patch anymore
-	long unused_variable = ipmon_checked_syscall(MVEE_REGISTER_IPMON,
+	long ret = ipmon_checked_syscall(MVEE_REGISTER_IPMON, 
 									 kernelmask, 
 									 ROUND_UP(__NR_syscalls, 8) / 8, 
-									 RB, 
-#ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
-									 ipmon_enclave_entrypoint_alternative
-#else
 									 ipmon_enclave_entrypoint
-#endif
 		);
 
-///	RB = NULL;
-
-	/*if (ret < 0 && ret > -4096)
+	if (ret < 0 && ret > -4096)
 	{
 		printf("ERROR: IP-MON registration failed. syscall(PR_REGISTER_IPMON) returned: %ld (%s)\n", ret, strerror(-ret));
 //		exit(-1);
 		return NULL;
-	}*/
+	}
 
 #ifdef MVEE_IP_PKU_ENABLED
 	// erim_switch_to_trusted is moved inside the kernel (sys_prctl with PR_REGISTER_IPMON as argument)
@@ -3919,28 +3900,16 @@ extern "C" void* ipmon_register_thread()
 		D = 13,
 		E = 23;
 
-	// TODO: Change entry to specific address of an unchecked ipmon syscall instruction
-	//__u64 ipmon_syscall_instruction = ipmon_unchecked_syscall_ptr;
-#ifdef IPMON_PASS_RB_POINTER_EXPLICITLY
-	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint_alternative;
-#else
 	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint;
-#endif
-
-	printf("INFO: ipmon_register_thread line 3875\n");
 
 	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
 	unsigned int ipmon_enclave_entrypoint_ptr_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint_ptr) >> 12;
 
-	printf("INFO: ipmon_enclave_entrypoint_ptr_in_16_bits = %x\n", ipmon_enclave_entrypoint_ptr_in_16_bits);
-
 	uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
-	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer
-	printf("INFO: ipmon_unchecked_syscall_instr_ptr = 0x%x\n", ((__u32*)&ipmon_unchecked_syscall_instr_ptr)[0]);
+	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
 
 	uintptr_t ipmon_checked_syscall_instr_ptr = (uintptr_t)ipmon_checked_syscall_instr;
-	ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer
-	printf("INFO: ipmon_checked_syscall_instr_ptr = 0x%x\n", ((__u32*)&ipmon_checked_syscall_instr_ptr)[0]);
+	ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
 
 	// Define empty BPF-filter while starting variant
 	struct sock_filter filter[] = {
@@ -3965,7 +3934,7 @@ extern "C" void* ipmon_register_thread()
 		/* [11][C] Jump forward E-C-1 instructions if system call number does not match '__NR_XXX'. */
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, (unsigned char)(E-C-1)), // TODO: Change back to __NR_getuid
 		/* [12] Execute the system call */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), // SECCOMP_RET_TRACE to check if the filter works
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE), // SECCOMP_RET_TRACE to check if the filter works
 		/* [13][D] Load system call number from 'seccomp_data' buffer into accumulator. */
 		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 		/* [14-20] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
@@ -3986,15 +3955,11 @@ extern "C" void* ipmon_register_thread()
 		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 	};
 
-	printf("INFO: ipmon_register_thread line 3923\n");
-
 	// Set BPF-filter
 	struct sock_fprog prog = {
 		(unsigned short)(sizeof(filter) / sizeof(filter[0])),
 		filter,
 	};
-
-	printf("INFO: ipmon_register_thread line 3929\n");
 
 	// Enable seccomp BPF-filtering
 	//if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
@@ -4004,10 +3969,7 @@ extern "C" void* ipmon_register_thread()
 		//warnf("Couldn't enable seccomp BPF-filtering\n");
 	}
 
-	printf("INFO: ipmon_register_thread line 3970\n");
-
-	printf("INFO: ipmon_register_thread line 4019\n");
-	return RB;
+	return ipmon_RB;
 }
 
 /*-----------------------------------------------------------------------------

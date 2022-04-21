@@ -19,18 +19,6 @@ extern "C" {
 #endif
 
 /*-----------------------------------------------------------------------------
-    RB Pointer Handling
------------------------------------------------------------------------------*/
-//
-// Bart: if this is defined, the enclave entrypoint will _explicitly_ pass the
-// RB pointer to the ipmon_enclave C function as the first argument
-//
-// If this is _NOT_ defined, then the enclave entrypoint will just keep
-// the RB pointer in register R11
-//
-#define IPMON_PASS_RB_POINTER_EXPLICITLY
-
-/*-----------------------------------------------------------------------------
     Policy control
 -----------------------------------------------------------------------------*/
 // Does the flush locally, avoiding context switches to GHUMVEE
