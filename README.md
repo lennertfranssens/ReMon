@@ -125,7 +125,7 @@ The **IP-MON** syscall policy must be selected at the source level. You can do s
 
 ### Enabling IP-MON
 
-To enable **IP-MON**, simply edit the MVEE.ini file in the output folder of your selected GHUMVEE build type and set the `use_ipmon` option to 1.
+To enable **IP-MON**, simply edit the MVEE.ini file in the output folder of your selected GHUMVEE build type and set the `use_ipmon` option to `true`.
 
 ### Running IP-MON
 
