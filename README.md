@@ -18,6 +18,19 @@ You will need:
 
 ## GHUMVEE Instructions
 
+### Using the ReMon container
+Execute the following instructions to build and run the container:
+```bash
+cd /path/to/ReMon
+./docker_MVEE.sh download
+./docker_MVEE.sh build
+./docker_MVEE.sh run
+```
+
+You need to execute `sudo mkdir ~/.local/share/x11docker/remon && sudo chmod -R 777 ~/.local/share/x11docker/remon` after installing x11docker.
+
+The ReMon repo can be found in the folder `/opt/repo`. If you cloned ReMon-glibc in the `ext` folder, then that repo can be found in the `/projects/ReMon-glibc` folder.
+
 ### Building GHUMVEE
 
 Building GHUMVEE is really easy. The `bootstrap.sh` script used to install the toolchain sets up the build/ directory using CMake, where GHUMVEE can be built by simply running `make`.
@@ -79,7 +92,7 @@ Alternatively, you might want to use the **MVEE_backtrace** tool in /path/to/ReM
 
 ## IP-MON Instructions
 
-To fully unleash the power of **ReMon**, you will also need to compile and enable **IP-MON**. Do keep in mind, however, that **IP-MON** is not nearly as mature as **GHUMVEE**. It _should_ work, but it takes quite some effort to get it up and running, and there might still be bugs.
+To fully unleash the power of **ReMon**, you will also need to compile and enable **IP-MON** and ReMon-glibc. Do keep in mind, however, that **IP-MON** is not nearly as mature as **GHUMVEE**. It _should_ work, but it takes quite some effort to get it up and running, and there might still be bugs.
 
 If you're not looking to maximize performance, then please skip this entire section. Debugging divergences is **_MUCH_** easier if you just use **GHUMVEE** without **IP-MON**.
 
@@ -154,10 +167,13 @@ cd build-tree
 # set up the makefiles. Alternatively, you can run ../configure-libc-partial-order-debug.sh here
 # to compile glibc with a synchronization agent that has self-debugging features
 ../configure-libc-woc.sh
-make -j 8
+make -j$(nproc)
 
 # install the libraries into $HOME/glibc-build
 make install
+
+# copy ReMon-glibc to the patched_binaries folder for usage in ReMon's MVEE
+cp ~/glibc-build/lib/libc-2.31.so /opt/repo/patched_binaries/libc/amd64/libc-2.31.so
 ```
 
 The current version of ReMon will load the glibc and libpthreads in the /path/to/ReMon/MVEE/patched_binaries/libc/<arch>/ folder into each of the variants' address spaces. You should set up symlinks in this folder so ReMon loads the **IP-MON**-compatible glibc/libpthreads.
