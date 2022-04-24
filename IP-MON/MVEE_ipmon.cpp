@@ -3911,6 +3911,16 @@ extern "C" void* ipmon_register_thread()
 	uintptr_t ipmon_checked_syscall_instr_ptr = (uintptr_t)ipmon_checked_syscall_instr;
 	ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
 
+	// TODO: syscalls that are always unchecked (because of the working of ipmon) are:
+	// * futex
+	// * sched_yield
+	// * ...
+	// These kinds of syscalls only need to be in the bpf filter right after the checking of the instruction pointer.
+	// These syscalls are invoked from ipmon_enclave only.
+	// The second part of the bpf filter that checks syscalls that are coming from the variant (and are not coming
+	// from ipmon) do not need to contain these syscalls (but they can if the syscalls are also allowed executing 
+	// coming from the variants).
+
 	// Define empty BPF-filter while starting variant
 	struct sock_filter filter[] = {
 		/* [0] Load the instruction pointer from 'seccomp_data' buffer into accumulator */
@@ -3924,8 +3934,8 @@ extern "C" void* ipmon_register_thread()
 		/* [3] Load system call number from 'seccomp_data' buffer into accumulator. */
 		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 		/* [4-10] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 7, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 6, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_futex, 7, 0), // futex coming from ipmon_enclave is allowed to guarantee synchronization
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_sched_yield, 6, 0), // sched_yield coming from ipmon_enclave is allowed to guarantee synchronization
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 5, 0),
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 4, 0),
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 3, 0),
@@ -3934,7 +3944,7 @@ extern "C" void* ipmon_register_thread()
 		/* [11][C] Jump forward E-C-1 instructions if system call number does not match '__NR_XXX'. */
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, (unsigned char)(E-C-1)), // TODO: Change back to __NR_getuid
 		/* [12] Execute the system call */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE), // SECCOMP_RET_TRACE to check if the filter works
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), // SECCOMP_RET_TRACE to check if the filter works
 		/* [13][D] Load system call number from 'seccomp_data' buffer into accumulator. */
 		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 		/* [14-20] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
@@ -3952,7 +3962,7 @@ extern "C" void* ipmon_register_thread()
 		/* [23][E] Execute the system call in tracer */
 		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
 
-		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
+		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
 	};
 
 	// Set BPF-filter
