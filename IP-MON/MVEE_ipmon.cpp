@@ -3799,6 +3799,8 @@ extern "C" void ipmon_checked_syscall_instr();
 -----------------------------------------------------------------------------*/
 extern "C" void* ipmon_register_thread()
 {
+	printf("INFO: Executing ipmon_register_thread()\n");
+
 	int rb_size;
 	ipmon_RB = (ipmon_buffer*)ipmon_checked_syscall(__NR_shmat,
 											ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/),
@@ -3948,9 +3950,9 @@ extern "C" void* ipmon_register_thread()
 		/* [21] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
 		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1), // TODO: Change back to __NR_getuid
 		/* [22] Return the ipmon syscall entry address */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ipmon_enclave_entrypoint_ptr_in_16_bits & SECCOMP_RET_DATA)),
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW | (ipmon_enclave_entrypoint_ptr_in_16_bits & SECCOMP_RET_DATA)),
 		/* [23][E] Execute the system call in tracer */
-		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 
 		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 	};
@@ -3973,44 +3975,17 @@ extern "C" void* ipmon_register_thread()
 }
 
 /*-----------------------------------------------------------------------------
-    is_ipmon_kernel_compatible - Check if the currently loaded kernel supports
-	the sys_ipmon_return syscall
------------------------------------------------------------------------------*/
-unsigned char is_ipmon_kernel_compatible()
-{
-	if (!ipmon_initialized)
-	{
-		// this call returns -EFAULT if called from outside the 
-		// enclave
-		if (ipmon_checked_syscall(__NR_ipmon_invoke) == -ENOIPMON)
-			ipmon_kernel_compatible = 1;
-	}
-	return ipmon_kernel_compatible;
-}
-
-/*-----------------------------------------------------------------------------
     init - Initialize IP-MON and check for compatible glibc
 -----------------------------------------------------------------------------*/
 void __attribute__((constructor)) init()
 {
 	// We don't want to recalculate the syscall mask if we've already registered
 	// an IP-MON for this process.
-	if (ipmon_initialized /*&& 
-		is_ipmon_kernel_compatible()*/)
+	if (ipmon_initialized)
 	{
 		ipmon_register_thread();
 		return;
 	}
-
-	/*if (!is_ipmon_kernel_compatible())
-	{
-		printf("WARNING: IP-MON has been activated through the use_ipmon setting in MVEE.ini,\n");
-		printf("WARNING: but we could not detect an IP-MON-compatible kernel.\n");
-		printf("WARNING:\n");
-		printf("WARNING: Please refer to MVEE/README.txt for instruction on how to build an\n");
-		printf("WARNING: IP-MON compatible kernel.\n");
-		return;
-	}*/
 
 	ipmon_initialized = true;
 	syscall_ordering_mutex.hack = 0;

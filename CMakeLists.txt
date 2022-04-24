@@ -314,7 +314,7 @@ target_compile_definitions(mvee PRIVATE
     $<$<BOOL:${ShmInsLogging}>:MVEE_SHARED_MEMORY_INSTRUCTION_LOGGING>
     $<$<BOOL:${ShmInsLoggingFull}>:MVEE_SHARED_MEMORY_INSTRUCTION_LOG_FULL>
     $<$<BOOL:${ShmReplayLeader}>:MVEE_SHARED_MEMORY_REPLAY_LEADER>
-    $<$<BOOL:${UseIPMON}>:USE_IPMON>
+#    $<$<BOOL:${UseIPMON}>:USE_IPMON>
     #MVEE_LOG_ALL_SHM_INSTRUCTIONS
 )
 # ======================================================================================================================
