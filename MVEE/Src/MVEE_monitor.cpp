@@ -1267,22 +1267,19 @@ bool monitor::handle_rdtsc_event(int variantnum)
 				}
 
 #ifdef USE_IPMON
-                debugf("Line 1261\n");
-                if (variants[variantnum].ipmon_active)
-                {
-                    debugf("Line 1264\n");
-                    if (!interaction::resume(variants[variantnum].variantpid))
-                        throw ResumeFailure(variantnum, "RDTSC resume");
-                }
-                else
-                {
-                    debugf("Line 1270\n");
-                    if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
-                        throw ResumeFailure(variantnum, "RDTSC resume");
-                }
+                    if (variants[variantnum].ipmon_active)
+                    {
+                        if (!interaction::resume(variants[variantnum].variantpid))
+                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                    }
+                    else
+                    {
+                        if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                    }
 #else
-                if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
-                    throw ResumeFailure(variantnum, "RDTSC resume");
+                    if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+                        throw RwRegsFailure(variantnum, "RDTSC resume");
 #endif
 				return true;
 			}
@@ -1337,19 +1334,19 @@ bool monitor::handle_rdtsc_event(int variantnum)
 					}
 
 #ifdef USE_IPMON
-                    if (variants[variantnum].ipmon_active)
+                    if (variants[i].ipmon_active)
                     {
-                        if (!interaction::resume(variants[variantnum].variantpid))
-                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                        if (!interaction::resume(variants[i].variantpid))
+                            throw RwRegsFailure(i, "RDTSC resume");
                     }
                     else
                     {
-                        if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
-                            throw RwRegsFailure(variantnum, "RDTSC resume");
+                        if (!interaction::resume_until_syscall(variants[i].variantpid))
+                            throw RwRegsFailure(i, "RDTSC resume");
                     }
 #else
-                    if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
-                        throw RwRegsFailure(variantnum, "RDTSC resume");
+                    if (!interaction::resume_until_syscall(variants[i].variantpid))
+                        throw RwRegsFailure(i, "RDTSC resume");
 #endif
                     variants[i].callnum = NO_CALL;
                 }

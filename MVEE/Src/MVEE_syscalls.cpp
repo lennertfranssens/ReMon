@@ -261,12 +261,7 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 			case MVEE_RUNS_UNDER_MVEE_CONTROL:
 			case MVEE_ENABLE_XCHECKS:
 			case MVEE_DISABLE_XCHECKS:
-            case MVEE_REGISTER_IPMON:
-            {
-                // TODO: Handle registration of ipmon in call_call_dispatch_unsynced
-                result = MVEE_CALL_TYPE_UNSYNCED;
-                break;
-            }
+
 			case MVEE_GET_LEADER_SHM_TAG:
             {
                 result = MVEE_CALL_TYPE_UNSYNCED;
@@ -287,6 +282,15 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 					result = MVEE_CALL_TYPE_UNSYNCED;
                 break;
 			}
+
+#ifdef USE_IPMON
+            case MVEE_REGISTER_IPMON:
+            {
+                // TODO: Handle registration of ipmon in call_call_dispatch_unsynced
+                result = MVEE_CALL_TYPE_UNSYNCED;
+                break;
+            }
+#endif
 
 			default:
 			{
@@ -551,8 +555,8 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                     }
 
                     variants[variantnum].shm_tag = shm_tag;
-                    if(!rw::write_primitive<unsigned long>(variants[variantnum].variantpid, (void*) ARG6(variantnum), shm_tag))
-                        throw RwMemFailure(variantnum, "write runs_under_mvee_control shared memory tag");
+                    //if(!rw::write_primitive<unsigned long>(variants[variantnum].variantpid, (void*) ARG6(variantnum), shm_tag))
+                    //    throw RwMemFailure(variantnum, "write runs_under_mvee_control shared memory tag");
                 }
 
 #ifdef MVEE_DISABLE_SYNCHRONIZATION_REPLICATION
@@ -617,9 +621,7 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 				result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 				break;
 			}
-
-            // This is only used when using IPMON (USE_IPMON) to get the address of the syscall
-            // instruction in glibc.
+#ifdef USE_IPMON
             case MVEE_REGISTER_IPMON:
             {
                 // TODO: Handle registration of ipmon here (in handler)
@@ -629,7 +631,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                 // arguments:
                 // unsigned long  ipmon_syscall_entry_ptr    : pointer to the syscall instruction in ipmon
                 //
-#ifdef USE_IPMON
                 variants[variantnum].ipmon_active                   = true;
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 
@@ -690,11 +691,9 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 
                 debugf("IP-MON initialized\n");
                 ipmon_initialized = true;
-#else
-                result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
-#endif
                 break;
             }
+#endif
 
 			//
 			// 
