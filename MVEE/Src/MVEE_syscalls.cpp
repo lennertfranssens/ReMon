@@ -632,7 +632,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 #ifdef USE_IPMON
                 variants[variantnum].ipmon_active                   = true;
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
-                debugf("INFO: Registering IP-MON\n");
 
                 /*// inspect the list of syscalls
                 unsigned char* ipmon_mask = rw::read_data(variants[variantnum].variantpid, (void*) ARG2(0), ARG3(0));

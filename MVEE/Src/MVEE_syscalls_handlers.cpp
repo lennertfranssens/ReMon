@@ -133,9 +133,7 @@
 #include <asm/prctl.h>
 #endif
 
-#ifdef USE_IPMON
 static int ipmon_first_time = false;
-#endif
 
 /*-----------------------------------------------------------------------------
   old_kernel_stat
@@ -7639,7 +7637,7 @@ CALL(mmap)
 				warnf("> variant %d => region span: 0x" PTRSTR "-0x" PTRSTR "\n", i,
 				bases[i], ROUND_UP(bases[i] + ARG2(0), 4096));
 				if (!ipmon_first_time) {
-					//SETARG1(i, bases[i]);
+					SETARG1(i, bases[i]);
 					ipmon_first_time = true;
 				}
 				
