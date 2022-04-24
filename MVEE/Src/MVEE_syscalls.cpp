@@ -631,7 +631,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                 // arguments:
                 // unsigned long  ipmon_syscall_entry_ptr    : pointer to the syscall instruction in ipmon
                 //
-                variants[variantnum].ipmon_active                   = true;
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 
                 /*// inspect the list of syscalls
@@ -689,8 +688,10 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                         variants[i].ipmon_region->print_region_info("> IP-MON REGION: ");
                 }
 
-                debugf("IP-MON initialized\n");
+                debugf("IP-MON initialized and active in variant %i\n", variantnum);
                 ipmon_initialized = true;
+
+                variants[variantnum].ipmon_active                   = true;
                 break;
             }
 #endif

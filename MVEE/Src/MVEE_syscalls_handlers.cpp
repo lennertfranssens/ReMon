@@ -7638,10 +7638,11 @@ CALL(mmap)
 				bases[i], ROUND_UP(bases[i] + ARG2(0), 4096));
 				if (!ipmon_first_time) {
 					SETARG1(i, bases[i]);
-					ipmon_first_time = true;
 				}
 				
 			}
+
+			ipmon_first_time = true;
 
             return MVEE_CALL_ALLOW;
 		}

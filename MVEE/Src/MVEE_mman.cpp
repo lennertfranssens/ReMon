@@ -1376,10 +1376,12 @@ void mmap_table::calculate_disjoint_bases_16_bits_version (unsigned long size, s
 {
     
     debugf("INFO: base_addr = 0x%x\n", base_addr);
-    bases[0] = base_addr;
-    bases[1] = base_addr;
-    base_addr += size;
 
+    for (size_t i = 0; i < bases.size(); i++)
+    {
+        bases[i] = base_addr;
+        base_addr += 0x100000;
+    }
 
 
     /*std::set<mmap_region_info*, region_sort>           merged_regions;
