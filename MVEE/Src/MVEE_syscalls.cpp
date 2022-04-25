@@ -676,18 +676,15 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 
                 // TODO: Do I need this with new IP-MON implementation?
                 // remember the base addresses and keys for IP-MON
-                /*for (int i = 0; i < mvee::numvariants; ++i)
-                {
-                    unsigned long ip;
+                unsigned long ip;
 
-                    if (!interaction::fetch_ip(variants[i].variantpid, ip))
-                        throw RwRegsFailure(i, "fetch IP-MON registration site");
+                if (!interaction::fetch_ip(variants[variantnum].variantpid, ip))
+                    throw RwRegsFailure(variantnum, "fetch IP-MON registration site");
 
-                    variants[i].ipmon_region = set_mmap_table->get_region_info(i, ip, 0);
-                    debugf("Initializing IP-MON - IP: 0x" PTRSTR "\n", ip);
-                    if (variants[i].ipmon_region)
-                        variants[i].ipmon_region->print_region_info("> IP-MON REGION: ");
-                }*/
+                variants[variantnum].ipmon_region = set_mmap_table->get_region_info(variantnum, ip, 0);
+                debugf("Initializing IP-MON - IP: 0x" PTRSTR "\n", ip);
+                if (variants[variantnum].ipmon_region)
+                    variants[variantnum].ipmon_region->print_region_info("> IP-MON REGION: ");
 
                 debugf("IP-MON initialized and active in variant %i\n", variantnum);
                 ipmon_initialized = true;
