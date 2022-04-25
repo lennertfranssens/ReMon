@@ -1380,7 +1380,7 @@ void mmap_table::calculate_disjoint_bases_16_bits_version (unsigned long size, s
     for (size_t i = 0; i < bases.size(); i++)
     {
         bases[i] = base_addr;
-        base_addr += 0x100000;
+        base_addr += 0x20000;
     }
 
 

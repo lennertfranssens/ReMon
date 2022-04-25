@@ -674,8 +674,9 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                 buffer->ipmon_numvariants = mvee::numvariants;
                 buffer->ipmon_usable_size = usable_size;
 
+                // TODO: Do I need this with new IP-MON implementation?
                 // remember the base addresses and keys for IP-MON
-                for (int i = 0; i < mvee::numvariants; ++i)
+                /*for (int i = 0; i < mvee::numvariants; ++i)
                 {
                     unsigned long ip;
 
@@ -686,12 +687,12 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                     debugf("Initializing IP-MON - IP: 0x" PTRSTR "\n", ip);
                     if (variants[i].ipmon_region)
                         variants[i].ipmon_region->print_region_info("> IP-MON REGION: ");
-                }
+                }*/
 
                 debugf("IP-MON initialized and active in variant %i\n", variantnum);
                 ipmon_initialized = true;
-
                 variants[variantnum].ipmon_active                   = true;
+
                 break;
             }
 #endif

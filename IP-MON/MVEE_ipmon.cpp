@@ -3962,7 +3962,7 @@ extern "C" void* ipmon_register_thread()
 		/* [23][E] Execute the system call in tracer */
 		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
 
-		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
+		//BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 	};
 
 	// Set BPF-filter

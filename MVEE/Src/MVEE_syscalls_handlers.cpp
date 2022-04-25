@@ -6940,14 +6940,6 @@ PRECALL(prctl)
 
     CHECKARG(1);
 
-    // syntax: sys_prctl(PR_REGISTER_IPMON, syscall_mask_ptr, syscall_mask_size)
-    if (ARG1(0) == PR_REGISTER_IPMON)
-    {
-        CHECKARG(3);
-        CHECKPOINTER(2);
-        CHECKBUFFER(2, ARG3(0));
-    }
-
     return MVEE_PRECALL_ARGS_MATCH | MVEE_PRECALL_CALL_DISPATCH_NORMAL;
 }
 
@@ -6959,34 +6951,6 @@ CALL(prctl)
         cache_mismatch_info("The program is trying to enable directly reading the time stamp counter. This call has been denied.\n");
         return MVEE_CALL_DENY | MVEE_CALL_RETURN_ERROR(EPERM);
     }
-	else if (ARG1(0) == PR_REGISTER_IPMON)
-	{
-		// inspect the list of syscalls
-		unsigned char* ipmon_mask = rw::read_data(variants[0].variantpid, (void*) ARG2(0), ARG3(0));
-		SYSCALL_MASK(dummy_mask);
-
-		if (ipmon_mask)
-		{
-			if (ARG3(0) >= sizeof(dummy_mask))
-			{
-#ifdef __NR_mmap
-				if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_mmap))
-					ipmon_mmap_handling = true;
-#endif
-#ifdef __NR_mmap2
-				if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_mmap2))
-					ipmon_mmap_handling = true;
-#endif
-
-				if (SYSCALL_MASK_ISSET(ipmon_mask, __NR_open))
-					ipmon_fd_handling = true;
-			}
-			
-			debugf("IP-MON handling mmap: %d - fd: %d\n", ipmon_mmap_handling, ipmon_fd_handling);
-
-			delete[] ipmon_mask;
-		}
-	}
 
 #ifndef USE_IPMON
 	else if (ARG1(0) == PR_SET_SECCOMP && ARG2(0) == SECCOMP_MODE_FILTER)
@@ -7000,46 +6964,6 @@ CALL(prctl)
 
 POSTCALL(prctl)
 {
-#ifdef MVEE_ARCH_SUPPORTS_IPMON
-    // PR_REGISTER_IPMON returns the IP-MON key
-    if (ARG1(0) == PR_REGISTER_IPMON && call_succeeded)
-    {
-        if (!ipmon_buffer) 
-		{
-			warnf("prctl(PR_REGISTER_IPMON) called, but the IP-MON buffer was not yet initialized");
-			return 0;
-		}
-
-        // Write the IP-MON buffer header
-        struct ipmon_buffer* buffer = (struct ipmon_buffer*) ipmon_buffer->ptr;
-
-		// The first cacheline contains the key, number of variants and usable size.
-		// Then we have one cacheline for each variant to store its current position within the IP-MON buffer
-        unsigned usable_size = ipmon_buffer->sz - 64 * (1 + mvee::numvariants);
-		buffer->ipmon_numvariants = mvee::numvariants;
-		buffer->ipmon_usable_size = usable_size;
-
-		// remember the base addresses and keys for IP-MON
-		for (int i = 0; i < mvee::numvariants; ++i)
-		{
-			unsigned long ip;
-
-			if (!interaction::fetch_ip(variants[i].variantpid, ip))
-				throw RwRegsFailure(i, "fetch IP-MON registration site");
-
-			variants[i].ipmon_region = set_mmap_table->get_region_info(i, ip, 0);
-			debugf("Initializing IP-MON - IP: 0x" PTRSTR "\n", ip);
-			if (variants[i].ipmon_region)
-				variants[i].ipmon_region->print_region_info("> IP-MON REGION: ");
-		}
-
-		debugf("IP-MON initialized\n");
-		ipmon_initialized = true;
-    }
-#endif
-
-debugf("INFO: Test Lennert\n");
-
     return 0;
 }
 
