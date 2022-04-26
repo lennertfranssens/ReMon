@@ -3800,8 +3800,9 @@ extern "C" void ipmon_checked_syscall_instr();
 extern "C" void* ipmon_register_thread()
 {
 	int rb_size;
+	long mvee_sb = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/);
 	ipmon_RB = (ipmon_buffer*)ipmon_checked_syscall(__NR_shmat,
-											ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/),
+											mvee_sb,
 											NULL, 0);
 
 	if (!ipmon_RB)
@@ -3904,6 +3905,7 @@ extern "C" void* ipmon_register_thread()
 
 	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
 	unsigned int ipmon_enclave_entrypoint_ptr_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint_ptr) >> 12;
+	printf("INFO: ipmon_enclave_entrypoint_ptr = %lx\n", ipmon_enclave_entrypoint_ptr);
 
 	uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
 	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
@@ -3948,15 +3950,15 @@ extern "C" void* ipmon_register_thread()
 		/* [13][D] Load system call number from 'seccomp_data' buffer into accumulator. */
 		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 		/* [14-20] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 7, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 6, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 5, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 4, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 3, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 2, 0),
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 1, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 7, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 6, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 5, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 4, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 3, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 2, 0),
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 1, 0),
 		/* [21] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
-		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_write, 0, 1), // TODO: Change back to __NR_getuid
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 350, 0, 1), // TODO: Change back to __NR_getuid
 		/* [22] Return the ipmon syscall entry address */
 		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ipmon_enclave_entrypoint_ptr_in_16_bits & SECCOMP_RET_DATA)),
 		/* [23][E] Execute the system call in tracer */
