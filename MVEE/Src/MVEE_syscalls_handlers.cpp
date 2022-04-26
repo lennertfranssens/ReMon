@@ -133,8 +133,6 @@
 #include <asm/prctl.h>
 #endif
 
-static int ipmon_first_time = false;
-
 /*-----------------------------------------------------------------------------
   old_kernel_stat
 -----------------------------------------------------------------------------*/
@@ -1270,6 +1268,7 @@ POSTCALL(execve)
 #endif
 
 		ipmon_initialized = false;
+		ipmon_mapped_first_time_in_ld = false;
 
         for (i = 0; i < mvee::numvariants; ++i)
             set_mmap_table->verify_mman_table(i, variants[i].variantpid);
@@ -5450,7 +5449,9 @@ LOG_ARGS(shmat)
 
 PRECALL(shmat)
 {
-	CHECKARG(3)
+	CHECKARG(3);
+
+	debugf("INFO: PRECALL shmat\n");
 
     // In this very specific case, ARG1 differs
     if (!monitor::atomic_variantwide_buffer.empty())
@@ -5503,6 +5504,8 @@ CALL(shmat)
 {
     bool disjoint_bases = true;
     long shm_sz = PAGE_SIZE;
+
+	debugf("INFO: CALL shmat\n");
 
     if (atomic_buffer &&
             ((int)ARG1(0) == atomic_buffer->id || (int)ARG1(0) == atomic_buffer->eip_id))
@@ -5603,11 +5606,13 @@ CALL(shmat)
         for (int i = 0; i < mvee::numvariants; ++i)
             SETARG2(i, bases[i]);
     }
+	debugf("INFO: CALL shmat returning MVEE_CALL_ALLOW\n");
 	return MVEE_CALL_ALLOW;
 }
 
 POSTCALL(shmat)
 {
+	debugf("INFO: POSTCALL shmat\n");
 	std::vector<unsigned long> addresses = call_postcall_get_result_vector();
 	std::string region_name = "[anonymous-sys V shm]";
 	unsigned long region_size = 0;
@@ -7551,22 +7556,24 @@ CALL(mmap)
 		{
 			debugf("INFO: fd_info path name is %s\n", info_filename.c_str());
 
-			std::vector<unsigned long> bases(mvee::numvariants);
-			set_mmap_table->calculate_disjoint_bases_16_bits_version(ARG2(0), bases);
+			
+			if (!ipmon_mapped)
+			{
+				set_mmap_table->calculate_disjoint_bases_16_bits_version(ARG2(0), ipmon_bases);
+				ipmon_mapped = true;
+			}
 
 			debugf("GHUMVEE is overriding the base address of a new code region backed by file: %s\n",
 					info->paths[0].c_str());
 
-			for (int i = 0; i < mvee::numvariants; ++i) {
-				warnf("> variant %d => region span: 0x" PTRSTR "-0x" PTRSTR "\n", i,
-				bases[i], ROUND_UP(bases[i] + ARG2(0), 4096));
-				if (!ipmon_first_time) {
-					SETARG1(i, bases[i]);
+			if (!ipmon_mapped_first_time_in_ld) {
+				for (int i = 0; i < mvee::numvariants; ++i) {
+					warnf("> variant %d => region span: 0x" PTRSTR "-0x" PTRSTR "\n", i,
+					ipmon_bases[i], ROUND_UP(ipmon_bases[i] + ARG2(0), 4096));
+					SETARG1(i, ipmon_bases[i]);
 				}
-				
+				ipmon_mapped_first_time_in_ld = true;
 			}
-
-			ipmon_first_time = true;
 
             return MVEE_CALL_ALLOW;
 		}

@@ -172,6 +172,8 @@ void monitor::init()
     monitor_registered             = false;
     monitor_terminating            = false;
     ipmon_initialized              = false;
+    ipmon_mapped                   = false;
+    ipmon_mapped_first_time_in_ld  = false;
 	ipmon_mmap_handling            = false;
 	ipmon_fd_handling              = false;
 	aliased_open                   = false;
@@ -193,6 +195,8 @@ void monitor::init()
 	current_shadow                 = NULL;
 
 	special_shmdt_count            = 0;
+
+    ipmon_bases.resize(mvee::numvariants);
 
 	blocked_signals.resize(mvee::numvariants);
 	old_blocked_signals.resize(mvee::numvariants);
