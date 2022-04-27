@@ -688,7 +688,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 
                 debugf("IP-MON initialized and active in variant %i\n", variantnum);
                 ipmon_initialized = true;
-                variants[variantnum].ipmon_active                   = true;
 
                 break;
             }
@@ -737,6 +736,7 @@ long monitor::call_call_dispatch ()
     }
     else
     {
+        debugf("INFO: Handling a fake syscall... In call_call_dispatch()\n");
         //
         // Handlers for fake syscalls. All of these calls will be denied.
         //

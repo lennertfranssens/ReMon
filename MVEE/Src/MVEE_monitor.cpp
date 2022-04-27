@@ -1158,7 +1158,7 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
             break;
         }
     }
-    debugf("INFO: syscall_info = %s\n", s.c_str());
+    debugf("INFO: syscall_info = %s with status.reason = %i and syscall number = %li\n", s.c_str(), status.reason, syscall_info.entry.nr);
 
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
@@ -1804,6 +1804,7 @@ void monitor::handle_trap_event(int index)
 -----------------------------------------------------------------------------*/
 void monitor::handle_syscall_entrance_event(int index)
 {
+    debugf("INFO: Handling syscall entrance event\n");
     long  i, precall_flags, call_flags;
     variants[index].regs_valid      = false;
     call_check_regs(index);
@@ -1926,6 +1927,7 @@ void monitor::handle_syscall_entrance_event(int index)
 		}
 
 		// Call CALL handler (if present)
+        debugf("INFO: Calling call_call_dispatch()\n");
 		call_flags = call_call_dispatch();
 
 		for (i = 0; i < mvee::numvariants; ++i)
@@ -2247,6 +2249,8 @@ void monitor::handle_seccomp_event(int index)
         return;
     }
 
+    debugf("INFO: In handle_seccomp_event() with callnum = %li\n", variants[index].callnum);
+
     handle_syscall_entrance_event(index);
 }
 
@@ -2333,10 +2337,15 @@ void monitor::handle_syscall_event(int index)
         return;
     }
 
+    debugf("INFO: In handle_syscall_event() with callnum = %li\n", variants[index].callnum);
+
 #ifdef USE_IPMON
     if (variants[index].ipmon_active)
     {
-	    handle_syscall_exit_event(index);
+        if (variants[index].callnum == NO_CALL)
+            handle_syscall_entrance_event(index);
+        else
+            handle_syscall_exit_event(index);
     }
     else
     {
@@ -2386,6 +2395,7 @@ void monitor::sig_restart_partially_interrupted_syscall()
 // TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status& status)
 {
+    debugf("INFO: In handle_signal_event()\n");
     siginfo_t siginfo;
 	unsigned long ip = 0, ret;
 #ifndef MVEE_BENCHMARK
@@ -2395,6 +2405,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
     // Terminated by unhandled signal
     if (status.reason == STOP_KILLED)
     {
+        debugf("INFO: In handle_signal_event() -> STOP_KILLED\n");
         variants[variantnum].variant_terminated = true;
 		if (!is_group_shutting_down())
 		{
@@ -2410,6 +2421,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
     }
     else if (status.reason == STOP_SIGNAL) // stopped by the delivery of a signal
     {
+        debugf("INFO: In handle_signal_event() -> STOP_SIGNAL\n");
         int signal = status.data;
 
         if (signal == SIGALRM)
@@ -2421,6 +2433,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
 
         if (signal == SIGSEGV)
         {
+            debugf("INFO: In handle_signal_event() -> SIGSEV\n");
             // invalidate cached register content
             variantstate* variant = &variants[variantnum];
             variant->regs_valid = false;
@@ -2437,7 +2450,9 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
             // check if this SIGSEGV was caused by a genuine shared memory access
             if IS_SHARED_MEMORY_ACCESS(variantnum, siginfo)
             {
+                debugf("INFO: In handle_signal_event() -> shared memory access\n");
 #ifdef MVEE_SHARED_MEMORY_INSTRUCTION_LOGGING
+                debugf("INFO: In handle_signal_event() -> logging enabled\n");
                 // log instruction =====================================================================================
                 mmap_region_info* variant_map_info = set_mmap_table->get_shared_info(variant->variant_num,
                         (unsigned long long) siginfo.si_addr);
@@ -2463,6 +2478,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
                 }
                 // log instruction =====================================================================================
 #else
+                debugf("INFO: In handle_signal_event() -> handling emulation\n");
                 // update the intent for the faulting variant
                 variant->instruction.update((void*) variant->regs.rip, decode_address_tag(siginfo.si_addr, variant));
                 instruction_intent_emulation::handle_emulation(variant, this);
@@ -2471,6 +2487,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
             }
             // shared memory access ====================================================================================
 #endif
+            debugf("INFO: In handle_signal_event() -> setting caller_info\n");
 
             std::string caller_info = set_mmap_table->get_caller_info(variantnum, variants[variantnum].variantpid, ip, 0);
 
@@ -2491,7 +2508,20 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
                 variant->regs.rip += instruction.size;
                 if (!interaction::write_all_regs(variant->variantpid, &variant->regs))
                     warnf("\n\n\nerror\n\n\n");
+                
+                debugf("INFO: In handle_signal_event() -> call_resume in cpuid exception\n");
+#ifdef USE_IPMON
+                if (variants[variantnum].ipmon_active)
+                {
+                    call_resume_seccomp(variantnum);
+                }
+                else
+                {
+                    call_resume(variantnum);
+                }
+#else
                 call_resume(variantnum);
+#endif
                 return;
             }
 #endif
@@ -2735,6 +2765,8 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
 					}
 				}
 			}
+
+            debugf("INFO: In handle_signal_event() -> call_resume(variantnum);\n");
 
             // Continue normal execution for now.
             // When a signal is ignored, the variant that was about to execute the sighandler
