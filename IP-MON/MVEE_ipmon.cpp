@@ -3801,6 +3801,7 @@ extern "C" void* ipmon_register_thread()
 {
 	int rb_size;
 	long mvee_sb = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/);
+	//printf("INFO: mvee_sb = %li\n", mvee_sb);
 	ipmon_RB = (ipmon_buffer*)ipmon_checked_syscall(__NR_shmat,
 											mvee_sb,
 											NULL, 0);
@@ -3812,10 +3813,11 @@ extern "C" void* ipmon_register_thread()
 		return NULL;
 	}
 
-	// printf("Replication buffer mapped @ 0x%016lx\n", ipmon_RB);
+	//printf("Replication buffer mapped @ 0x%016lx\n", ipmon_RB);
 
 	// Attach to the regfile map. This one is process-wide but might still be mapped after forking! 
 	long mvee_regfile_id = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_REG_FILE_MAP, NULL, NULL, NULL, NULL);
+	//printf("INFO: mvee_regfile_id = %li\n", mvee_regfile_id);
 	if (mvee_regfile_id != ipmon_reg_file_map_id)
 	{
 		ipmon_reg_file_map_id = mvee_regfile_id;
@@ -3838,6 +3840,8 @@ extern "C" void* ipmon_register_thread()
 									 ROUND_UP(__NR_syscalls, 8) / 8, 
 									 ipmon_enclave_entrypoint
 		);
+
+	//printf("INFO: ret = %li\n", ret);
 
 	if (ret < 0 && ret > -4096)
 	{
@@ -3905,7 +3909,7 @@ extern "C" void* ipmon_register_thread()
 
 	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
 	unsigned int ipmon_enclave_entrypoint_ptr_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint_ptr) >> 12;
-	printf("INFO: ipmon_enclave_entrypoint_ptr = %lx\n", ipmon_enclave_entrypoint_ptr);
+	//printf("INFO: ipmon_enclave_entrypoint_ptr = %lx\n", ipmon_enclave_entrypoint_ptr);
 
 	uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
 	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
@@ -3973,6 +3977,9 @@ extern "C" void* ipmon_register_thread()
 		filter,
 	};
 
+	// Debugging fake syscalls. TODO: Remove this.
+	//syscall(1234);
+
 	// Enable seccomp BPF-filtering
 	//if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog) == -1)
 	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
@@ -3980,6 +3987,9 @@ extern "C" void* ipmon_register_thread()
 		perror("ERROR");
 		//warnf("Couldn't enable seccomp BPF-filtering\n");
 	}
+
+	// Debugging fake syscalls. TODO: Remove this.
+	//syscall(1234);
 
 	return ipmon_RB;
 }
