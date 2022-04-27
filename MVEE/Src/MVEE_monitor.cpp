@@ -1167,9 +1167,10 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
         return;
     }
 #ifdef USE_IPMON
-    else if (variants[index].ipmon_active && status.reason == STOP_SECCOMP)
+    else if (status.reason == STOP_SECCOMP)
 	{
-		handle_seccomp_event(index);
+		//handle_seccomp_event(index);
+        call_resume_all();
 		return;
 	}
 #endif

@@ -65,7 +65,8 @@ unsigned char monitor::call_is_known_false_positive(long* precall_flags)
 -----------------------------------------------------------------------------*/
 void monitor::call_resume_seccomp(int variantnum)
 {
-	if (!interaction::resume(variants[variantnum].variantpid))
+    pid_t pid = variants[variantnum].variantpid;
+	if (!interaction::resume(pid))
 		throw ResumeFailure(variantnum, "syscall resume seccomp");
 }
 
@@ -83,7 +84,9 @@ void monitor::call_resume_seccomp_all()
 -----------------------------------------------------------------------------*/
 void monitor::call_resume(int variantnum)
 {
-	if (!interaction::resume_until_syscall(variants[variantnum].variantpid))
+    pid_t pid = variants[variantnum].variantpid;
+    debugf("INFO: Resume variant %i with pid %u\n", variantnum, pid);
+	if (!interaction::resume_until_syscall(pid))
 		throw ResumeFailure(variantnum, "syscall resume");
 }
 

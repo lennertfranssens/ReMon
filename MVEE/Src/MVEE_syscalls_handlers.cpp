@@ -11333,7 +11333,7 @@ POSTCALL(seccomp)
 		// ipmon bpf filter is active now
 		for (int i = 0; i < mvee::numvariants; ++i)
 		{
-			variants[i].ipmon_active = true;
+			//variants[i].ipmon_active = true;
 		}
 	}
 #endif
