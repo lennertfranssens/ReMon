@@ -30,7 +30,7 @@ struct sock_filter filter[] = {
   my @allowed_syscalls = @{$config->{"seccomp_bpf_policy"}{"allow"}};
 
   if (@allowed_syscalls == 0) {
-        $filter .=
+    $filter .=
 "BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
 ";
   } else {
@@ -135,4 +135,19 @@ E = " . $E . ";
 
 } else {
   print "We only support the TRACE default_policy for now...";
+
+  $filename = 'MVEE_ipmon_seccomp_bpf_policy.h';
+  open(FH, '>', $filename) or die $!;
+
+  my $filter =
+"// Define seccomp-bpf filter
+struct sock_filter filter[] = {
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
+};
+";
+  print FH $filter;
+
+  close(FH);
+
+  print "MVEE_ipmon_seccomp_bpf_policy.h generated\n";
 }
