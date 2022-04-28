@@ -14,6 +14,7 @@ compile() {
 asm MVEE_ipmon_syscall
 
 ./generate_headers.rb
+./generate_seccomp_bpf_policy.pl
 preprocess MVEE_ipmon
 compile MVEE_ipmon
 

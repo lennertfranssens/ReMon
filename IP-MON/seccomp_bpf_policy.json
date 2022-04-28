@@ -1,0 +1,7 @@
+{
+    "seccomp_bpf_policy": {
+        "default_policy": "SECCOMP_RET_TRACE",
+        "trace": ["__NR_write", "__NR_getpid"],
+        "allow": ["__NR_write", "__NR_prctl"]
+    }
+}
