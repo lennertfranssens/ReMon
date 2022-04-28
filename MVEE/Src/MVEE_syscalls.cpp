@@ -85,7 +85,6 @@ void monitor::call_resume_seccomp_all()
 void monitor::call_resume(int variantnum)
 {
     pid_t pid = variants[variantnum].variantpid;
-    debugf("INFO: Resume variant %i with pid %u\n", variantnum, pid);
 	if (!interaction::resume_until_syscall(pid))
 		throw ResumeFailure(variantnum, "syscall resume");
 }
@@ -289,7 +288,6 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 #ifdef USE_IPMON
             case MVEE_REGISTER_IPMON:
             {
-                // TODO: Handle registration of ipmon in call_call_dispatch_unsynced
                 result = MVEE_CALL_TYPE_UNSYNCED;
                 break;
             }
@@ -627,13 +625,6 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 #ifdef USE_IPMON
             case MVEE_REGISTER_IPMON:
             {
-                // TODO: Handle registration of ipmon here (in handler)
-                // as of 28/03/2022, this call is now invoked as follows (pseudocode):
-                // syscall(MVEE_REGISTER_IPMON, &ipmon_syscall_entry_ptr);
-                //
-                // arguments:
-                // unsigned long  ipmon_syscall_entry_ptr    : pointer to the syscall instruction in ipmon
-                //
                 result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
 
                 /*// inspect the list of syscalls
@@ -739,7 +730,6 @@ long monitor::call_call_dispatch ()
     }
     else
     {
-        debugf("INFO: Handling a fake syscall... In call_call_dispatch()\n");
         //
         // Handlers for fake syscalls. All of these calls will be denied.
         //

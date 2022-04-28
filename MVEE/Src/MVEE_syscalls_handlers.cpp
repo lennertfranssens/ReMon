@@ -5451,8 +5451,6 @@ PRECALL(shmat)
 {
 	CHECKARG(3);
 
-	debugf("INFO: PRECALL shmat\n");
-
     // In this very specific case, ARG1 differs
     if (!monitor::atomic_variantwide_buffer.empty())
     {
@@ -5504,8 +5502,6 @@ CALL(shmat)
 {
     bool disjoint_bases = true;
     long shm_sz = PAGE_SIZE;
-
-	debugf("INFO: CALL shmat\n");
 
     if (atomic_buffer &&
             ((int)ARG1(0) == atomic_buffer->id || (int)ARG1(0) == atomic_buffer->eip_id))
@@ -5606,13 +5602,11 @@ CALL(shmat)
         for (int i = 0; i < mvee::numvariants; ++i)
             SETARG2(i, bases[i]);
     }
-	debugf("INFO: CALL shmat returning MVEE_CALL_ALLOW\n");
 	return MVEE_CALL_ALLOW;
 }
 
 POSTCALL(shmat)
 {
-	debugf("INFO: POSTCALL shmat\n");
 	std::vector<unsigned long> addresses = call_postcall_get_result_vector();
 	std::string region_name = "[anonymous-sys V shm]";
 	unsigned long region_size = 0;
@@ -6918,8 +6912,6 @@ POSTCALL(poll)
   sys_prctl - (int option, unsigned long arg2, unsigned long arg3,
   unsigned long arg4, unsigned long arg5)
 -----------------------------------------------------------------------------*/
-// TODO: Register ipmon not here because we are not using the kernel patch anymore.
-// Change to a fake syscall and handle in MVEE_syscalls.cpp.
 LOG_ARGS(prctl)
 {
 	debugf("%s - SYS_PRCTL(%d, %lu, %lu, %lu, %lu)\n",

@@ -1107,7 +1107,6 @@ void monitor::update_sync_primitives ()
 -----------------------------------------------------------------------------*/
 void monitor::handle_event (interaction::mvee_wait_status& status)
 {
-    debugf("INFO: in handle_event()\n");
     int index;
 
     // find the variant index
@@ -1137,30 +1136,6 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
         return;
     }
 
-    // TODO: LF: Remove the following 3 lines.
-    __ptrace_syscall_info syscall_info{};
-    ptrace(PTRACE_GET_SYSCALL_INFO, variants[index].variantpid, sizeof(syscall_info), &syscall_info);
-    std::string s;
-    switch (syscall_info.op) {
-        case PTRACE_SYSCALL_INFO_ENTRY: {
-            s = "PTRACE_SYSCALL_INFO_ENTRY";
-            break;
-        }
-        case PTRACE_SYSCALL_INFO_EXIT: {
-            s = "PTRACE_SYSCALL_INFO_EXIT";
-            break;
-        }
-        case PTRACE_SYSCALL_INFO_SECCOMP: {
-            s = "PTRACE_SYSCALL_INFO_SECCOMP";
-            break;
-        }
-        default: {
-            s = "UNKNOWN";
-            break;
-        }
-    }
-    debugf("INFO: syscall_info = %s with status.reason = %i and syscall number = %li\n", s.c_str(), status.reason, syscall_info.entry.nr);
-
     // check for exit events first
     if (unlikely(status.reason == STOP_EXIT))
     {
@@ -1168,9 +1143,8 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
         return;
     }
 #ifdef USE_IPMON
-    else if (status.reason == STOP_SECCOMP)
+    else if (variants[index].ipmon_active && status.reason == STOP_SECCOMP)
 	{
-        debugf("INFO: SECCOMP met syscall no = %li\n", syscall_info.entry.nr);
 		handle_seccomp_event(index);
 		return;
 	}
@@ -1806,7 +1780,6 @@ void monitor::handle_trap_event(int index)
 -----------------------------------------------------------------------------*/
 void monitor::handle_syscall_entrance_event(int index)
 {
-    debugf("INFO: Handling syscall entrance event\n");
     long  i, precall_flags, call_flags;
     variants[index].regs_valid      = false;
     call_check_regs(index);
@@ -1929,7 +1902,6 @@ void monitor::handle_syscall_entrance_event(int index)
 		}
 
 		// Call CALL handler (if present)
-        debugf("INFO: Calling call_call_dispatch()\n");
 		call_flags = call_call_dispatch();
 
 		for (i = 0; i < mvee::numvariants; ++i)
@@ -2173,7 +2145,6 @@ void monitor::handle_syscall_exit_event(int index)
 -----------------------------------------------------------------------------*/
 void monitor::handle_seccomp_event(int index)
 {
-    // TODO: LF: Make a function of it? Do I need it both here and in the handle_syscall_event?
     // ERESTARTSYS handler
     if (variants[index].restarting_syscall
         && !variants[index].restarted_syscall)
@@ -2250,8 +2221,6 @@ void monitor::handle_seccomp_event(int index)
 
         return;
     }
-
-    debugf("INFO: In handle_seccomp_event() with callnum = %li\n", variants[index].callnum);
 
     handle_syscall_entrance_event(index);
 }
@@ -2261,7 +2230,6 @@ void monitor::handle_seccomp_event(int index)
 -----------------------------------------------------------------------------*/
 void monitor::handle_syscall_event(int index)
 {
-    // TODO: LF: Make a function of it? Do I need it both here and in the handle_seccomp_event?
     // ERESTARTSYS handler
     if (variants[index].restarting_syscall
         && !variants[index].restarted_syscall)
@@ -2338,8 +2306,6 @@ void monitor::handle_syscall_event(int index)
 
         return;
     }
-
-    debugf("INFO: In handle_syscall_event() with callnum = %li\n", variants[index].callnum);
 
 #ifdef USE_IPMON
     if (variants[index].ipmon_active)
@@ -2367,7 +2333,6 @@ void monitor::handle_syscall_event(int index)
 /*-----------------------------------------------------------------------------
     sig_restart_partially_interrupted_syscall
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_restart_partially_interrupted_syscall()
 {
     debugf("Some variants managed to return normally from this syscall\n");
@@ -2394,10 +2359,8 @@ void monitor::sig_restart_partially_interrupted_syscall()
     point. Then, at the sync point, we send the original signal ourselves
     and we let it go through from within this function.
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status& status)
 {
-    debugf("INFO: In handle_signal_event()\n");
     siginfo_t siginfo;
 	unsigned long ip = 0, ret;
 #ifndef MVEE_BENCHMARK
@@ -2407,7 +2370,6 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
     // Terminated by unhandled signal
     if (status.reason == STOP_KILLED)
     {
-        debugf("INFO: In handle_signal_event() -> STOP_KILLED\n");
         variants[variantnum].variant_terminated = true;
 		if (!is_group_shutting_down())
 		{
@@ -2423,7 +2385,6 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
     }
     else if (status.reason == STOP_SIGNAL) // stopped by the delivery of a signal
     {
-        debugf("INFO: In handle_signal_event() -> STOP_SIGNAL\n");
         int signal = status.data;
 
         if (signal == SIGALRM)
@@ -2435,7 +2396,6 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
 
         if (signal == SIGSEGV)
         {
-            debugf("INFO: In handle_signal_event() -> SIGSEV\n");
             // invalidate cached register content
             variantstate* variant = &variants[variantnum];
             variant->regs_valid = false;
@@ -2452,9 +2412,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
             // check if this SIGSEGV was caused by a genuine shared memory access
             if IS_SHARED_MEMORY_ACCESS(variantnum, siginfo)
             {
-                debugf("INFO: In handle_signal_event() -> shared memory access\n");
 #ifdef MVEE_SHARED_MEMORY_INSTRUCTION_LOGGING
-                debugf("INFO: In handle_signal_event() -> logging enabled\n");
                 // log instruction =====================================================================================
                 mmap_region_info* variant_map_info = set_mmap_table->get_shared_info(variant->variant_num,
                         (unsigned long long) siginfo.si_addr);
@@ -2480,7 +2438,6 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
                 }
                 // log instruction =====================================================================================
 #else
-                debugf("INFO: In handle_signal_event() -> handling emulation\n");
                 // update the intent for the faulting variant
                 variant->instruction.update((void*) variant->regs.rip, decode_address_tag(siginfo.si_addr, variant));
                 instruction_intent_emulation::handle_emulation(variant, this);
@@ -2489,10 +2446,8 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
             }
             // shared memory access ====================================================================================
 #endif
-            debugf("INFO: In handle_signal_event() -> setting caller_info\n");
 
             std::string caller_info = set_mmap_table->get_caller_info(variantnum, variants[variantnum].variantpid, ip, 0);
-
 
 			// check for cpuid exception
 #ifdef MVEE_EMULATE_CPUID
@@ -2510,8 +2465,7 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
                 variant->regs.rip += instruction.size;
                 if (!interaction::write_all_regs(variant->variantpid, &variant->regs))
                     warnf("\n\n\nerror\n\n\n");
-                
-                debugf("INFO: In handle_signal_event() -> call_resume in cpuid exception\n");
+
 #ifdef USE_IPMON
                 if (variants[variantnum].ipmon_active)
                 {
@@ -2768,8 +2722,6 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
 				}
 			}
 
-            debugf("INFO: In handle_signal_event() -> call_resume(variantnum);\n");
-
             // Continue normal execution for now.
             // When a signal is ignored, the variant that was about to execute the sighandler
             // will execute a sys_restart_syscall call.
@@ -2874,7 +2826,6 @@ bool monitor::in_ipmon(int variantnum, unsigned long ip)
 	In this function we simply keep restarting the slaves until they also
 	see the specified signal
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 bool monitor::sig_handle_sigchld_race(std::vector<mvee_pending_signal>::iterator it)
 {		
 	interaction::mvee_wait_status status;
@@ -2980,7 +2931,6 @@ bool monitor::sig_handle_sigchld_race(std::vector<mvee_pending_signal>::iterator
     the variants' contexts should be backed up and the current syscall should be
     skipped.
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 bool monitor::sig_prepare_delivery ()
 {
     if (in_signal_handler() || 
@@ -3171,7 +3121,6 @@ void monitor::sig_finish_delivery ()
 /*-----------------------------------------------------------------------------
     mvee_sig_return_from_sighandler - restores original context and resumes variants
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_return_from_sighandler ()
 {
     // restore normal execution after return from signal handler
@@ -3234,7 +3183,6 @@ void monitor::sig_return_from_sighandler ()
     For all restart errors, the kernel will adjust the instruction pointer
     so that we're back at the start of the original syscall
 -----------------------------------------------------------------------------*/
-// TODO: LF: Check usage of call_resume. Do we need to check the state (entry, seccomp, exit) here?
 void monitor::sig_restart_syscall(int variantnum)
 {
 	interaction::mvee_wait_status status;

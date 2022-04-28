@@ -1744,9 +1744,6 @@ void mvee::start_monitored()
         while (!mvee::can_run)
             ;
 
-        // TODO: First trace all syscalls untill... we have the glibc syscall ret ptr
-        // and we return that ptr to the registration of ipmon, which then sets up the bpf filter
-        // The monitor thread is now attached. It is now safe to execve
         start_variant(i);
     }
 }
