@@ -1107,6 +1107,7 @@ void monitor::update_sync_primitives ()
 -----------------------------------------------------------------------------*/
 void monitor::handle_event (interaction::mvee_wait_status& status)
 {
+    debugf("INFO: in handle_event()\n");
     int index;
 
     // find the variant index
@@ -1169,8 +1170,8 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 #ifdef USE_IPMON
     else if (status.reason == STOP_SECCOMP)
 	{
-		//handle_seccomp_event(index);
-        call_resume_all();
+        debugf("INFO: SECCOMP met syscall no = %li\n", syscall_info.entry.nr);
+		handle_seccomp_event(index);
 		return;
 	}
 #endif
