@@ -7,7 +7,7 @@ RUN \
     # Required to build dependencies
     apt-get install -y gcc g++ cmake bison flex python texinfo texi2html automake zlib1g-dev ccache python3 \
     # Required to build IP-MON
-    clang \
+    clang perl libjson-perl\
     # Required to build MVEE
     ruby libselinux-dev musl-tools libelf-dev libdwarf-dev libgmp-dev libmpfr-dev libmpc-dev libconfig-dev libcap-dev libunwind8 libunwind8-dev liblzma5 liblzma-dev libjsoncpp-dev
 
