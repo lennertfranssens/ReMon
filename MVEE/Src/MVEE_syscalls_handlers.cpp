@@ -7560,8 +7560,8 @@ CALL(mmap)
 
 			if (!ipmon_mapped_first_time_in_ld) {
 				for (int i = 0; i < mvee::numvariants; ++i) {
-					warnf("> variant %d => region span: 0x" PTRSTR "-0x" PTRSTR "\n", i,
-					ipmon_bases[i], ROUND_UP(ipmon_bases[i] + ARG2(0), 4096));
+					/*warnf("> variant %d => region span: 0x" PTRSTR "-0x" PTRSTR "\n", i,
+					ipmon_bases[i], ROUND_UP(ipmon_bases[i] + ARG2(0), 4096));*/
 					SETARG1(i, ipmon_bases[i]);
 				}
 				ipmon_mapped_first_time_in_ld = true;
