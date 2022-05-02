@@ -132,6 +132,9 @@
 #ifdef MVEE_ARCH_HAS_ARCH_PRCTL
 #include <asm/prctl.h>
 #endif
+#ifdef USE_IPMON
+#include <regex>
+#endif
 
 /*-----------------------------------------------------------------------------
   old_kernel_stat
@@ -7542,9 +7545,11 @@ CALL(mmap)
         }
 
 #ifdef USE_IPMON
-		std::string libipmonso = "libipmon.so";
+		//std::string libipmonso = "libipmon.so";
+		std::regex libipmonso(R"(libipmon([\w\-. ]*)\.so$)");
 		std::string info_filename = info->get_path_string();
-		if (info_filename.length() >= libipmonso.length() && info_filename.compare(info_filename.length() - libipmonso.length(), libipmonso.length(), libipmonso) == 0)
+		//if (info_filename.length() >= libipmonso.length() && info_filename.compare(info_filename.length() - libipmonso.length(), libipmonso.length(), libipmonso) == 0)
+		if (regex_search(info_filename, libipmonso))
 		{
 			debugf("INFO: fd_info path name is %s\n", info_filename.c_str());
 
