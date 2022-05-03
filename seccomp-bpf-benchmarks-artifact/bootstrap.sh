@@ -25,7 +25,7 @@ sudo apt install -y clang perl libjson-perl
 cd ../IP-MON
 ruby ./generate_headers.rb
 
-cp "$__home_dir/benchmarks/patches/IP-MON/"* "$__home_dir/../IP-MON/"
+#cp "$__home_dir/benchmarks/patches/IP-MON/"* "$__home_dir/../IP-MON/"
 
 ./comp.sh
 mv ./libipmon.so ./libipmon-default.so
