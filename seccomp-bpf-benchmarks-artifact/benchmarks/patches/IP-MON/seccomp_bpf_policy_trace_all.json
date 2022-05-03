@@ -1,0 +1,6 @@
+{
+    "seccomp_bpf_policy": {
+        "default_policy": "TRACE",
+        "allow": []
+    }
+}

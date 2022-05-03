@@ -45,7 +45,7 @@ then
     #CFLAGS="-O2 -fno-builtin" ../configure --enable-stackguard-randomization --enable-obsolete-rpc --enable-pt_chown \
     #    --with-selinux --enable-lock-elision=no --enable-addons=nptl --prefix=/ --sysconfdir=/etc/
 
-    git checkout ipmon
+    git checkout master
     ../configure-libc-woc.sh
     make -j$(nproc)
     make install
@@ -57,13 +57,13 @@ then
     #cp "./resolv/libresolv.so.2" "./built-versions/normal/"
     #cp "./rt/librt.so.1"         "./built-versions/normal/"
     #cp "./login/libutil.so.1"    "./built-versions/normal/"
-    #cp ~/glibc-build/lib/libc-2.31.so ./built-versions/normal/
+    cp ~/glibc-build/lib/libc-2.31.so ./built-versions/normal/
     
-    #git checkout ipmon
-    #make clean
-    #../configure-libc-woc.sh
-    #make -j$(nproc)
-    #make install
+    git checkout ipmon
+    make clean
+    ../configure-libc-woc.sh
+    make -j$(nproc)
+    make install
     #cp "./elf/ld.so"             "./built-versions/ipmon/"
     #cp "./libc.so.6"             "./built-versions/ipmon/"
     #cp "./dlfcn/libdl.so.2"      "./built-versions/ipmon/"
@@ -72,9 +72,9 @@ then
     #cp "./resolv/libresolv.so.2" "./built-versions/ipmon/"
     #cp "./rt/librt.so.1"         "./built-versions/ipmon/"
     #cp "./login/libutil.so.1"    "./built-versions/ipmon/"
-    #cp ~/glibc-build/lib/libc-2.31.so ./built-versions/ipmon/
+    cp ~/glibc-build/lib/libc-2.31.so ./built-versions/ipmon/
 
-    #git checkout master
+    git checkout master
 
     ln -fs "$__home_dir/../deps/ReMon-glibc/build/built-versions/normal/"* \
 		"$__home_dir/../patched_binaries/libc/amd64"
