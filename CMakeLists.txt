@@ -111,6 +111,13 @@ add_custom_target(
 )
 
 add_custom_target(
+        ipmon_compatible
+        COMMAND "${CMAKE_COMMAND}" .. 
+            -DCMAKE_BUILD_TYPE=Release
+            -DUse_IPMON=ON
+)
+
+add_custom_target(
         emulate-shm
         COMMAND "${CMAKE_COMMAND}" ..
             -DEmulateCPUID=ON

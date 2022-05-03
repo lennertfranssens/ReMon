@@ -11,7 +11,9 @@ process ()
 
 echo " > native run"
 process "native.out"
-echo " > wrapped bursts"
+echo " > default mvee"
 process "default.out"
-echo " > non-wrapped bursts"
-process "stripped.out"
+echo " > ipmon enabled mvee with getpid traced"
+process "ipmon_getpid_traced.out"
+echo " > ipmon enabled mvee with getpid allowed"
+process "ipmon_getpid_allowed.out"

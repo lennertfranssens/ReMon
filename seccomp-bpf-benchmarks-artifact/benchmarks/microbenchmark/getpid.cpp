@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#define GETPID_TEST_COUNT    500000000
+#define GETPID_TEST_COUNT    10//500000000
 #define LOOP_TIMES	      5
 
 int main()
@@ -18,7 +18,7 @@ int main()
             getpid();
         auto end = std::chrono::high_resolution_clock::now();
         float result = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-        printf("\t> run %u: %f ns\n", size_i, result / GETPID_TEST_COUNT);
+        printf("\t> %u: %f ns\n", size_i, result / GETPID_TEST_COUNT);
     }
     return 0;
 }
