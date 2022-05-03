@@ -22,25 +22,15 @@ echo " > running native microbenchmark..."
 for __i in {1..5}
 do
     echo " > run $__i/5"
-    ../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/native.out
+    ../../../eurosys2022-artifact/benchmarks/microbenchmark/getpid >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/native.out
 done
 
-# Wrapped bursts
 ../../../eurosys2022-artifact/benchmarks/scripts/relink_glibc.sh default
 echo " > running mvee microbenchmark with wrapped access..."
 for __i in {1..5}
 do
     echo " > run $__i/5"
-    ./mvee -N 2 -- ../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/default.out
-done
-
-# Non-wrapped bursts
-../../../eurosys2022-artifact/benchmarks/scripts/relink_glibc.sh stripped
-echo " > running mvee microbenchmark without wrapped access..."
-for __i in {1..5}
-do
-    echo " > run $__i/5"
-    ./mvee -N 2 -- ../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/stripped.out
+    ./mvee -N 1 -- ../../../eurosys2022-artifact/benchmarks/microbenchmark/getpid >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/default.out
 done
 
 # Make sure the correct libc version is used for later experiments.

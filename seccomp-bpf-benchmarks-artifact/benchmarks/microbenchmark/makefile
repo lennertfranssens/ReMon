@@ -1,2 +1,2 @@
-all: memcpy.cpp
-	gcc memcpy.cpp -lstdc++ -o memcpy
+all: getpid.cpp
+	gcc getpid.cpp -lstdc++ -o getpid
