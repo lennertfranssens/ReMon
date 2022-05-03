@@ -3595,7 +3595,6 @@ void ipmon_set_unchecked_syscall(unsigned char* mask, unsigned long syscall_no, 
 	the kernel will land when the app executes a syscall on the IP-MON whitelist
 -----------------------------------------------------------------------------*/
 extern "C" void ipmon_enclave_entrypoint();
-extern "C" void ipmon_enclave_entrypoint_alternative();
 extern "C" void* ipmon_register_thread();
 
 ipmon_buffer* secret_ipmon_buffer_pointer = NULL;
