@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#define GETPID_TEST_COUNT    100000
-#define LOOP_TIMES	      5
+#define GETPID_TEST_COUNT    10000000
+#define LOOP_TIMES	      10
 
 int main()
 {
