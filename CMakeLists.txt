@@ -300,7 +300,7 @@ endif()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-option(BenchmarkMode "Run MVEE in Benchmark mode." ON)
+option(BenchmarkMode "Run MVEE in Benchmark mode." OFF)
 option(EmulateCPUID "Emulate CPUID instruction." ON)
 option(EmulateShm "Emulate shared memory." ON)
 option(LogNonInstrumentedIns "Log non-instrumented instructions using shared memory." ON)

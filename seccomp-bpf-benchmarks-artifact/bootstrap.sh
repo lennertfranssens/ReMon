@@ -14,7 +14,7 @@ cd ../
 ./bootstrap.sh
 cd ./build/
 
-#make benchmark
+make benchmark
 make ipmon_compatible
 make -j$(nproc)
 
