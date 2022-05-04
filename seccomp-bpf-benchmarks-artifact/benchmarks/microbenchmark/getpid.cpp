@@ -15,8 +15,7 @@ int main()
     {        
         auto start = std::chrono::high_resolution_clock::now();
         for (int cnt_i = 0; cnt_i < GETPID_TEST_COUNT; cnt_i++)
-            //getpid();
-            printf("hello\n");
+            getpid();
         auto end = std::chrono::high_resolution_clock::now();
         float result = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         printf("\t> %u: %f ns\n", size_i, result / GETPID_TEST_COUNT);
