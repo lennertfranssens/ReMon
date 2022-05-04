@@ -3614,6 +3614,7 @@ extern "C" long ipmon_enclave
 	unsigned long arg6
 )
 {
+	//printf("INFO: In enclave, syscall_no = %lu\n", syscall_no);
 	ipmon_buffer* RB = ipmon_RB;
 	long result;
 	struct ipmon_syscall_args args;
@@ -3653,6 +3654,10 @@ extern "C" long ipmon_enclave
 
 		RB = (ipmon_buffer *) ipmon_register_thread();
 	}*/
+
+	if (RB == 0) {
+		RB = (ipmon_buffer *) ipmon_register_thread();
+	}
 
 	// In signal handler
 	if (RB->have_pending_signals & 2) {
