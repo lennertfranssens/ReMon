@@ -260,6 +260,12 @@ monitor::monitor(monitor* parent_monitor, bool shares_fd_table, bool shares_mmap
         // If this is a fork: Copy over the list of variables to reset
         if (!shares_mmap_table)
             variants[i].reset_atfork = parent_monitor->variants[i].reset_atfork;
+        
+#ifdef USE_IPMON
+        // seccomp-BPF filters will be preserved across forks/clones
+        // so we need to take over the ipmon_active state of the parent
+        variants[i].ipmon_active = parent_monitor->variants[i].ipmon_active;
+#endif
     }
 
     // variant monitors are a different story. New variants (forks/vforks/clones) always
@@ -1192,7 +1198,7 @@ void monitor::handle_event (interaction::mvee_wait_status& status)
 		return;
 	}
 
-	handle_signal_event(index, status);
+    handle_signal_event(index, status);
 }
 
 /*-----------------------------------------------------------------------------
@@ -2725,7 +2731,18 @@ void monitor::handle_signal_event(int variantnum, interaction::mvee_wait_status&
             // Continue normal execution for now.
             // When a signal is ignored, the variant that was about to execute the sighandler
             // will execute a sys_restart_syscall call.
+#ifdef USE_IPMON
+            if (variants[variantnum].ipmon_active)
+            {
+                call_resume_seccomp(variantnum);
+            }
+            else
+            {
+                call_resume(variantnum);
+            }
+#else
 			call_resume(variantnum);
+#endif
         }
     }
 }
