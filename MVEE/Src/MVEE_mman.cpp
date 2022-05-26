@@ -34,7 +34,16 @@
 #include "MVEE_private_arch.h"
 #include "MVEE_macros.h"
 
-static int base_addr = 0x200000;
+const int ipmon_base_addr = 0x800000;       // Base address is in between hex [800000,1000000[
+                                            // because we can only use hex [800,1000[ in the 
+                                            // seccomp-BPF filter to return as valid errno value
+                                            // that is not mapped to a meaningful errno value.
+                                            // We align the IP-MON entry 4096 to get the 12 most
+                                            // lsbs to 0. That way we can expand [800,1000[ with
+                                            // 12 more 0 bits to [800000,1000000[.
+                                            // TODO: Make this more random. But must be the same for
+                                            // all monitors and a mapping stays constant when the
+                                            // variant does an execve or clone.
 
 /*-----------------------------------------------------------------------------
     mmap_region_info class
@@ -1365,15 +1374,17 @@ void mmap_table::calculate_disjoint_bases (unsigned long size, std::vector<unsig
 }
 
 /*-----------------------------------------------------------------------------
-    calculate_disjoint_bases - The monitor has seen a new mmap call
-    that maps in code. We want to:
-    1) force strong randomization => ASLR will only randomize the 16 higher
-    order bits of the base address
-    2) force disjunct code regions => no pointer should ever reference a valid
-    code region in more than one variant
+    calculate_disjoint_bases_16_bits_ipmon - The monitor has seen a new mmap call
+    that maps IP-MON. We want to:
+    1) Be sure that IP-MON maps on a valid address that can be defined with a given
+    number of bits. That is now a hardcoded address (0x800000) that lies in the
+    range of valid addresses for IP-MON.
+    2) TODO: Make the address more random, somewhere in between the valid range.
 -----------------------------------------------------------------------------*/
-void mmap_table::calculate_disjoint_bases_16_bits_version (unsigned long size, std::vector<unsigned long>& bases)
+void mmap_table::calculate_disjoint_bases_16_bits_ipmon (unsigned long size, std::vector<unsigned long>& bases)
 {
+
+    int base_addr = ipmon_base_addr;
     
     debugf("INFO: base_addr = 0x%x\n", base_addr);
 

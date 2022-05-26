@@ -3183,11 +3183,24 @@ void monitor::sig_return_from_sighandler ()
 			if (!interaction::write_all_regs(variants[i].variantpid, &variants[i].regsbackup))
 				throw RwRegsFailure(i, "post-signal context restore");
 
+#ifdef USE_IPMON
+            if (variants[i].ipmon_active)
+            {
+                call_resume_seccomp(i);
+            }
+            else
+            {
+                call_resume(i);
+            }
+#else
 			call_resume(i);
+#endif
         }
 
 		if (!restore_context && !current_signal)
+        {
 			call_resume(i);
+        }
     }
 }
 

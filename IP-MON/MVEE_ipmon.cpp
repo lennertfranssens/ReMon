@@ -69,9 +69,10 @@
 // Retard check - is the loaded kernel compatible with IP-MON or not?
 //
 extern "C" unsigned char ipmon_initialized; // MVEE_ipmon_syscall.S
-unsigned char            ipmon_kernel_compatible = 0;
-unsigned char            ipmon_variant_num       = 0;
-thread_local struct ipmon_buffer* ipmon_RB       = 0;
+bool					 seccomp_bpf_filter_is_set	= false;
+unsigned char            ipmon_kernel_compatible 	= 0;
+unsigned char            ipmon_variant_num       	= 0;
+thread_local struct ipmon_buffer* ipmon_RB       	= 0;
 
 //
 // Mask of syscalls that may be handled by IP-MON and bypass the ptracer
@@ -3614,7 +3615,6 @@ extern "C" long ipmon_enclave
 	unsigned long arg6
 )
 {
-	//printf("INFO: In enclave, syscall_no = %lu\n", syscall_no);
 	ipmon_buffer* RB = ipmon_RB;
 	long result;
 	struct ipmon_syscall_args args;
@@ -3805,7 +3805,6 @@ extern "C" void* ipmon_register_thread()
 {
 	int rb_size;
 	long mvee_sb = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_BUFFER, &rb_size, NULL, NULL, 0 /*rb_already_initialized*/);
-	//printf("INFO: mvee_sb = %li\n", mvee_sb);
 	ipmon_RB = (ipmon_buffer*)ipmon_checked_syscall(__NR_shmat,
 											mvee_sb,
 											NULL, 0);
@@ -3821,7 +3820,6 @@ extern "C" void* ipmon_register_thread()
 
 	// Attach to the regfile map. This one is process-wide but might still be mapped after forking! 
 	long mvee_regfile_id = ipmon_checked_syscall(MVEE_GET_SHARED_BUFFER, 0, MVEE_IPMON_REG_FILE_MAP, NULL, NULL, NULL, NULL);
-	//printf("INFO: mvee_regfile_id = %li\n", mvee_regfile_id);
 	if (mvee_regfile_id != ipmon_reg_file_map_id)
 	{
 		ipmon_reg_file_map_id = mvee_regfile_id;
@@ -3844,8 +3842,6 @@ extern "C" void* ipmon_register_thread()
 									 ROUND_UP(__NR_syscalls, 8) / 8, 
 									 ipmon_enclave_entrypoint
 		);
-
-	//printf("INFO: ret = %li\n", ret);
 
 	if (ret < 0 && ret > -4096)
 	{
@@ -3902,6 +3898,14 @@ extern "C" void* ipmon_register_thread()
 		printf("ERROR: IP-MON RB registration failed. pkey_mprotect returned -1.");
 #endif
 
+	return ipmon_RB;
+}
+
+/*-----------------------------------------------------------------------------
+    set_seccomp_bpf_filter - Set the seccomp-BPF filter for this variant
+-----------------------------------------------------------------------------*/
+extern "C" void set_seccomp_bpf_filter()
+{
 	// Get the address of the ipmon enlcave entrypoint
 	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint;
 
@@ -3929,8 +3933,10 @@ extern "C" void* ipmon_register_thread()
 	{
 		perror("Couldn't enable seccomp-bpf filtering");
 	}
-
-	return ipmon_RB;
+	else
+	{
+		seccomp_bpf_filter_is_set = true;
+	}
 }
 
 /*-----------------------------------------------------------------------------
@@ -3960,6 +3966,10 @@ void __attribute__((constructor)) init()
 		is_ipmon_kernel_compatible()*/)
 	{
 		ipmon_register_thread();
+		if (!seccomp_bpf_filter_is_set)
+		{
+			set_seccomp_bpf_filter();
+		}
 		return;
 	}
 
@@ -4131,6 +4141,11 @@ void __attribute__((constructor)) init()
 #endif
 
 	ipmon_register_thread();
+	if (!seccomp_bpf_filter_is_set)
+	{
+		set_seccomp_bpf_filter();
+	}
+
 #ifdef MVEE_IP_PKU_ENABLED
 	erim_switch_to_untrusted;
 #endif
