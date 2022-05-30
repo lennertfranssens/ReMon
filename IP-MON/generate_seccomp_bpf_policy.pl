@@ -82,28 +82,16 @@ BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), // SECCOMP_RET_TRACE to check if t
 BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 /* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
 BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange, 0, 1),
-/* [" . $D_++ . "] Return the ipmon syscall entry address bits 0 - 11 */
-BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_0_11 & SECCOMP_RET_DATA)),
-/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
-BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 1, 0, 1),
 /* [" . $D_++ . "] Return the ipmon syscall entry address bits 12 - 23 */
 BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_12_23 & SECCOMP_RET_DATA)),
 /* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
-BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 2, 0, 1),
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 1, 0, 1),
 /* [" . $D_++ . "] Return the ipmon syscall entry address bits 24 - 35 */
 BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_24_35 & SECCOMP_RET_DATA)),
 /* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
-BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 3, 0, 1),
-/* [" . $D_++ . "] Return the ipmon syscall entry address bits 36 - 47 */
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 2, 0, 1),
+/* [" . $D_ . "] Return the ipmon syscall entry address bits 36 - 47 */
 BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_36_47 & SECCOMP_RET_DATA)),
-/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
-BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 4, 0, 1),
-/* [" . $D_++ . "] Return the ipmon syscall entry address bits 48 - 59 */
-BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_48_59 & SECCOMP_RET_DATA)),
-/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
-BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 5, 0, 1),
-/* [" . $D_ . "] Return the ipmon syscall entry address bits 60 - 63 */
-BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_60_63 & SECCOMP_RET_DATA)),
 ";
     $filter .= $line;
 
