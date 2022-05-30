@@ -146,7 +146,11 @@ D = " . $D . ",
 E = " . $E . ";
 const int upper = 4095;
 const int lower = 2048;
-const int invoke_key_exchange = 3000; //(rand() % (upper - lower + 1)) + lower;
+const int number_of_values = upper - lower;
+const int number_of_passes = 6;
+const int mod_6_upper_bound = number_of_values / number_of_passes;
+const int invoke_key_exchange_mod = (rand() % number_of_values) + 1;
+const __u32 invoke_key_exchange = (__u32)(lower + (invoke_key_exchange_mod * number_of_passes));
 ";
 
   }
