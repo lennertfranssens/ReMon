@@ -7556,7 +7556,7 @@ CALL(mmap)
 			
 			if (!ipmon_mapped)
 			{
-				set_mmap_table->calculate_disjoint_bases_16_bits_ipmon(ARG2(0), ipmon_bases);
+				set_mmap_table->calculate_disjoint_bases(ARG2(0), ipmon_bases);
 				ipmon_mapped = true;
 			}
 
