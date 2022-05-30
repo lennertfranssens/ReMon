@@ -263,8 +263,9 @@ unsigned char monitor::call_precall_get_call_type (int variantnum, long callnum)
 			case MVEE_RUNS_UNDER_MVEE_CONTROL:
 			case MVEE_ENABLE_XCHECKS:
 			case MVEE_DISABLE_XCHECKS:
-
 			case MVEE_GET_LEADER_SHM_TAG:
+            case MVEE_SECCOMP_BPF_FILTER_INSTALLED:
+            case MVEE_IS_SECCOMP_BPF_FILTER_INSTALLED:
             {
                 result = MVEE_CALL_TYPE_UNSYNCED;
                 break;
@@ -613,6 +614,27 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
 			{
         variants[variantnum].extended_value = variants[0].shm_tag;
         result = MVEE_CALL_DENY | MVEE_CALL_RETURN_EXTENDED_VALUE;
+				break;
+			}
+
+            case MVEE_SECCOMP_BPF_FILTER_INSTALLED:
+			{
+#ifdef USE_IPMON
+                variants[variantnum].ipmon_active = true;
+                result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1);
+#else
+                result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(0);
+#endif
+				break;
+			}
+
+            case MVEE_IS_SECCOMP_BPF_FILTER_INSTALLED:
+			{
+#ifdef USE_IPMON
+                result = variants[variantnum].ipmon_active ? (MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(1)) : (MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(0));
+#else
+                result = MVEE_CALL_DENY | MVEE_CALL_RETURN_VALUE(0);
+#endif
 				break;
 			}
 

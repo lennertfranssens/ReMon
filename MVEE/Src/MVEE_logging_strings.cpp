@@ -224,6 +224,8 @@ const char* getTextualSyscall(long int syscallnum)
 			DEF_CASE(MVEE_GET_LEADER_SHM_TAG);
 			DEF_CASE(MVEE_RESET_ATFORK);
             DEF_CASE(MVEE_REGISTER_IPMON);
+            DEF_CASE(MVEE_SECCOMP_BPF_FILTER_INSTALLED);
+            DEF_CASE(MVEE_IS_SECCOMP_BPF_FILTER_INSTALLED);
         }
     }
 
