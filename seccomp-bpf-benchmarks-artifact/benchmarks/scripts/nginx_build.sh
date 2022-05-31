@@ -37,7 +37,7 @@ do
       export CC="$__llvm_bin_dir/clang -g -O3"
       export CXX="$__llvm_bin_dir/clang++ -g -O3"
 
-      ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
+      #ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
 
       do_make
 
@@ -50,7 +50,7 @@ do
       export CC="$__llvm_bin_dir/clang $CFLAGS"
       export CXX="$__llvm_bin_dir/clang++ $CFLAGS"
 
-      ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
+      #ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
 
       do_make
 

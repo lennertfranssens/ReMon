@@ -5,9 +5,8 @@ __home_dir=$(readlink -f $(dirname ${BASH_SOURCE}))
 
 
 $__home_dir/nginx_build.sh \
-        --base-anon        \
-        --default-anon     \
-        --wrapped-anon
+	--base		   \
+        --default
 
 
 #$__home_dir/mplayer_build.sh     \
