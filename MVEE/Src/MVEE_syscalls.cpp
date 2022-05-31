@@ -557,8 +557,8 @@ long monitor::call_call_dispatch_unsynced (int variantnum)
                     }
 
                     variants[variantnum].shm_tag = shm_tag;
-                    //if(!rw::write_primitive<unsigned long>(variants[variantnum].variantpid, (void*) ARG6(variantnum), shm_tag))
-                    //    throw RwMemFailure(variantnum, "write runs_under_mvee_control shared memory tag");
+                    if(!rw::write_primitive<unsigned long>(variants[variantnum].variantpid, (void*) ARG6(variantnum), shm_tag))
+                        throw RwMemFailure(variantnum, "write runs_under_mvee_control shared memory tag");
                 }
 
 #ifdef MVEE_DISABLE_SYNCHRONIZATION_REPLICATION
