@@ -1125,7 +1125,6 @@ unsigned long mmap_table::find_image_base (int variantnum, std::string image_nam
 -----------------------------------------------------------------------------*/
 void mmap_table::calculate_disjoint_bases (unsigned long size, std::vector<unsigned long>& bases)
 {
-    warnf("hallo lennert\n");
     std::set<mmap_region_info*, region_sort>           merged_regions;
     std::set<mmap_region_info*, region_sort>::iterator it;
     std::set<mmap_region_info*, region_sort>::iterator it2;
