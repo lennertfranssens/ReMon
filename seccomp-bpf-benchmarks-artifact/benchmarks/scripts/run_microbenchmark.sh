@@ -26,7 +26,6 @@ do
 done
 
 # Default ReMon run
-../../../seccomp-bpf-benchmarks-artifact/benchmarks/scripts/relink_glibc.sh default
 echo " > running mvee microbenchmark with default ReMon..."
 for __i in {1..5}
 do
@@ -35,7 +34,6 @@ do
 done
 
 # ReMon with IP-MON enabled and getpid traced run
-../../../seccomp-bpf-benchmarks-artifact/benchmarks/scripts/relink_glibc.sh ipmon
 cp ../../../seccomp-bpf-benchmarks-artifact/benchmarks/patches/IP-MON/seccomp_bpf_policy_trace_all.json ../../../IP-MON/seccomp_bpf_policy.json
 cd ../../../seccomp-bpf-benchmarks-artifact/
 ./comp-ipmon.sh
@@ -49,7 +47,6 @@ do
 done
 
 # ReMon with IP-MON enabled and getpid allowed run
-../../../seccomp-bpf-benchmarks-artifact/benchmarks/scripts/relink_glibc.sh ipmon
 cp ../../../seccomp-bpf-benchmarks-artifact/benchmarks/patches/IP-MON/seccomp_bpf_policy_allow_getpid.json ../../../IP-MON/seccomp_bpf_policy.json
 
 cd ../../../seccomp-bpf-benchmarks-artifact/
@@ -62,9 +59,6 @@ do
     echo " > run $__i/5"
     ./mvee -N 1 -- ../../../seccomp-bpf-benchmarks-artifact/benchmarks/microbenchmark/getpid >> ../../../seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/ipmon_getpid_allowed.out
 done
-
-# Make sure the correct libc version is used for later experiments.
-../../../seccomp-bpf-benchmarks-artifact/benchmarks/scripts/relink_glibc.sh default
 
 # Trace all syscalls in IP-MON
 cp ../../../seccomp-bpf-benchmarks-artifact/benchmarks/patches/IP-MON/seccomp_bpf_policy_trace_all.json ../../../IP-MON/seccomp_bpf_policy.json

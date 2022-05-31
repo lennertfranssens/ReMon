@@ -1,98 +1,84 @@
 # Microbenchmark
 
-Time: ~3 hours. Start from the repo's root directory.
+Time: ~4 hours. Start from the repo's root directory.
 
 ## Automatic
 
 ### Native
 
 ```bash
-./eurosys2022-artifact/benchmarks/scripts/run_microbenchmark.sh
-```
-
-### Running in docker
-
-**Method 1**: using the included docker bash script
-
-```bash
-./eurosys2022-artifact/docker_control.sh run ./eurosys2022-artifact/benchmarks/scripts/run_microbenchmark.sh
-```
-
-**Method 2**: running docker command manually:
-
-```bash
-docker run                                                            \
-    --security-opt seccomp=unconfined                                 \
-    -v "$(pwd):/home/eval/artifact/" --workdir="/home/eval/artifact/" \
-    -it shmvee:ae ./eurosys2022-artifact/benchmarks/scripts/run_microbenchmark.sh
+./seccomp-bpf-benchmarks-artifact/benchmarks/scripts/run_microbenchmark.sh
 ```
 
 ## Manual
-
-### Step 0 - docker entrance
-
-**Optional!** Skip if you are running the experiments natively. All following commands are to be run inside the docker
-container, unless mentioned otherwise.
-
-**Method 1**: using the included docker bash script
-
-```bash
-./eurosys2022-artifact/docker_control.sh run
-```
-
-**Method 2**: running docker command manually:
-
-```bash
-docker run                                                            \
-    --security-opt seccomp=unconfined                                 \
-    -v "$(pwd):/home/eval/artifact/" --workdir="/home/eval/artifact/" \
-    -it shmvee:ae bash
-```
 
 ### Step 1 - setting up the output for automatic processing
 
 ```bash
 # Clear files containing output.
-rm ./eurosys2022-artifact/benchmarks/results/microbenchmark/*
+rm ./seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/*
 ```
 
 ### Step 2 - setting up the MVEE
 
 ```bash
-# Optional for when you want to enable IP-MON, has no effect when kernel is not IP-MON enabled.
-cd IP-MON/
-ln -fs libipmon-default.so libipmon.so
-cd ../
-
-
 cd MVEE/bin/Release/
-# Enable IP-MON by editing MVEE.ini and setting "use_ipmon" to true, has no effect when kernel is not IP-MON enabled.
-sed -i "s/\"use_ipmon\" : false/\"use_ipmon\" : true/g" ./MVEE.ini
+# Disable IP-MON by editing MVEE.ini and setting "use_ipmon" to false.
+sed -i "s/\"use_ipmon\" : true/\"use_ipmon\" : false/g" ./MVEE.ini
 ```
 
-### Step 2 - running the experiments
+### Step 3 - running the experiments
 
 ```bash
 # native run, do this 10 times
-../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/native.out
+../../../seccomp-bpf-benchmarks-artifact/benchmarks/microbenchmark/getpid >> ../../../seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/native.out
 
-# wrapped bursts, do this 10 times
-../../../eurosys2022-artifact/benchmarks/scripts/relink_glibc.sh default
-./mvee -N 2 -- ../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/default.out
-
-# non-wrapped bursts, do this 10 times
-../../../eurosys2022-artifact/benchmarks/scripts/relink_glibc.sh stripped
-./mvee -N 2 -- ../../../eurosys2022-artifact/benchmarks/microbenchmark/memcpy >> ../../../eurosys2022-artifact/benchmarks/results/microbenchmark/stripped.out
-
-# make sure the correct libc version is used for later experiments
-../../../eurosys2022-artifact/benchmarks/scripts/relink_glibc.sh default
+# default ReMon, do this 10 times
+./mvee -N 1 -- ../../../seccomp-bpf-benchmarks-artifact/benchmarks/microbenchmark/getpid >> ../../../seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/default.out
 ```
 
-### Step 3 - automatic processing
-
-This will output the average of the runs for each buffer size for each experiment. This does not have to be run inside
-the docker container, but works either way. Run this from the repo's root.
+### Step 4 - Setting up IP-MON
 
 ```bash
-./eurosys2022-artifact/benchmarks/scripts/process_microbenchmark.sh
+# Enable IP-MON by editing MVEE.ini and setting "use_ipmon" to true.
+sed -i "s/\"use_ipmon\" : false/\"use_ipmon\" : true/g" ./MVEE.ini
+
+# Change IP-MON policy to trace all and recompile IP-MON
+cp ../../../seccomp-bpf-benchmarks-artifact/benchmarks/patches/IP-MON/seccomp_bpf_policy_trace_all.json ../../../IP-MON/seccomp_bpf_policy.json
+cd ../../../seccomp-bpf-benchmarks-artifact/
+./comp-ipmon.sh
+cd -
+
+```
+
+### Step 5 - running the experiments
+
+```bash
+# ReMon with IP-MON enabled and getpid traced, do this 10 times
+./mvee -N 1 -- ../../../seccomp-bpf-benchmarks-artifact/benchmarks/microbenchmark/getpid >> ../../../seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/ipmon_getpid_traced.out
+```
+
+### Step 6 - Reconfigure IP-MON
+
+```bash
+# Change IP-MON policy to allow getpid and recompile IP-MON
+cp ../../../seccomp-bpf-benchmarks-artifact/benchmarks/patches/IP-MON/seccomp_bpf_policy_allow_getpid.json ../../../IP-MON/seccomp_bpf_policy.json
+cd ../../../seccomp-bpf-benchmarks-artifact/
+./comp-ipmon.sh
+cd -
+```
+
+### Step 7 - running the experiments
+
+```bash
+# ReMon with IP-MON enabled and getpid traced, do this 10 times
+./mvee -N 1 -- ../../../seccomp-bpf-benchmarks-artifact/benchmarks/microbenchmark/getpid >> ../../../seccomp-bpf-benchmarks-artifact/benchmarks/results/microbenchmark/ipmon_getpid_allowed.out
+```
+
+### Step 8 - automatic processing
+
+This will output the average of the runs for each buffer size for each experiment. Run this from the repo's root.
+
+```bash
+./seccomp-bpf-benchmarks-artifact/benchmarks/scripts/process_microbenchmark.sh
 ```
