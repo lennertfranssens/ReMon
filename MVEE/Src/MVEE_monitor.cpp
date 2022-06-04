@@ -265,6 +265,12 @@ monitor::monitor(monitor* parent_monitor, bool shares_fd_table, bool shares_mmap
         // seccomp-BPF filters will be preserved across forks/clones
         // so we need to take over the ipmon_active state of the parent
         variants[i].ipmon_active = parent_monitor->variants[i].ipmon_active;
+        if (variants[i].ipmon_active)
+        {
+            ipmon_mapped = parent_monitor->ipmon_mapped;
+            ipmon_mapped_first_time_in_ld = false;//parent_monitor->ipmon_mapped_first_time_in_ld;
+            ipmon_bases = parent_monitor->ipmon_bases;
+        }
 #endif
     }
 

@@ -7556,7 +7556,7 @@ CALL(mmap)
 			
 			if (!ipmon_mapped)
 			{
-				set_mmap_table->calculate_disjoint_bases_16_bits_ipmon(ARG2(0), ipmon_bases);
+				set_mmap_table->calculate_disjoint_bases(ARG2(0), ipmon_bases);
 				ipmon_mapped = true;
 			}
 
@@ -11321,20 +11321,6 @@ CALL(seccomp)
 
 POSTCALL(seccomp)
 {
-	// Unless the program is GHUMVEE-aware, these filters will not work
-	// well. We'll just pretend like the kernel doesn't support seccomp-filtering
-
-#ifdef USE_IPMON
-	if (ARG1(0) == SECCOMP_SET_MODE_FILTER)
-	{
-		// ipmon bpf filter is active now
-		for (int i = 0; i < mvee::numvariants; ++i)
-		{
-			variants[i].ipmon_active = true;
-		}
-	}
-#endif
-
 	return 0;	
 }
 #endif

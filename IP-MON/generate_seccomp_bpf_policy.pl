@@ -71,6 +71,7 @@ BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
     }
 
     $i = $C + 1;
+    $D_ = $D + 1;
 
     $line =
 "/* [" . $C . "][C] Jump forward E-C-1 instructions if system call number does not match '__NR_XXX'. */
@@ -79,6 +80,18 @@ BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, " . $always_allowed_syscalls[0] . ", 0, (uns
 BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW), // SECCOMP_RET_TRACE to check if the filter works
 /* [" . $D . "][D] Load system call number from 'seccomp_data' buffer into accumulator. */
 BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
+/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange, 0, 1),
+/* [" . $D_++ . "] Return the ipmon syscall entry address bits 12 - 23 */
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_12_23 & SECCOMP_RET_DATA)),
+/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 1, 0, 1),
+/* [" . $D_++ . "] Return the ipmon syscall entry address bits 24 - 35 */
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_24_35 & SECCOMP_RET_DATA)),
+/* [" . $D_++ . "] Jump forward 1 instructions if system call number does not match XXX. */
+BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, invoke_key_exchange + 2, 0, 1),
+/* [" . $D_ . "] Return the ipmon syscall entry address bits 36 - 47 */
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((unsigned int)ipmon_enclave_entrypoint_ptr_bits_36_47 & SECCOMP_RET_DATA)),
 ";
     $filter .= $line;
 
@@ -86,7 +99,7 @@ BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
 
     if ($i > 0) {
       $line =
-"/* [" . ($D + 1) . "-" . ($D + @allowed_syscalls) . "] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
+"/* [" . ($D_ + 1) . "-" . ($D_ + @allowed_syscalls) . "] Jump forward 0 instructions if system call number does not match '__NR_XXX'. */
 ";
       $filter .= $line;
 
@@ -99,13 +112,13 @@ BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (offsetof(struct seccomp_data, nr))),
       }
     }
 
-    $i = $D + @allowed_syscalls;
+    $i = $D_ + @allowed_syscalls;
 
     $line =
 "/* [" . $i++ . "] Jump forward 1 instructions if system call number does not match '__NR_XXX'. */
 BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, " . $allowed_syscalls[0] . ", 0, 1),
 /* [" . $i++ . "] Return the ipmon syscall entry address */
-BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ipmon_enclave_entrypoint_ptr_in_16_bits & SECCOMP_RET_DATA)),
+BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (invoke_key_exchange & SECCOMP_RET_DATA)),
 /* [" . $i++ . "][E] Execute the system call in tracer */
 BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE),
 ";
@@ -119,6 +132,13 @@ B = " . $B . ",
 C = " . $C . ",
 D = " . $D . ",
 E = " . $E . ";
+const int upper = 4095;
+const int lower = 2048;
+const int number_of_values = upper - lower;
+const int number_of_passes = 6;
+const int mod_6_upper_bound = number_of_values / number_of_passes;
+const int invoke_key_exchange_mod = (rand() % number_of_values) + 1;
+const __u32 invoke_key_exchange = (__u32)(lower + (invoke_key_exchange_mod * number_of_passes));
 ";
 
   }

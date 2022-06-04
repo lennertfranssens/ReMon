@@ -3906,37 +3906,61 @@ extern "C" void* ipmon_register_thread()
 -----------------------------------------------------------------------------*/
 extern "C" void set_seccomp_bpf_filter()
 {
-	// Get the address of the ipmon enlcave entrypoint
-	uintptr_t ipmon_enclave_entrypoint_ptr = (uintptr_t)ipmon_enclave_entrypoint;
+	int is_seccomp_bpf_filter_installed = ipmon_checked_syscall(MVEE_IS_SECCOMP_BPF_FILTER_INSTALLED);
 
-	// We shift 12 bits right because we align on 4096 in ipmon_enclave_entrypoint(_alternative)
-	unsigned int ipmon_enclave_entrypoint_ptr_in_16_bits = ((unsigned int)ipmon_enclave_entrypoint_ptr) >> 12;
-	//printf("INFO: ipmon_enclave_entrypoint_ptr = %lx\n", ipmon_enclave_entrypoint_ptr);
+	if (is_seccomp_bpf_filter_installed == 0)
+	{
+		// Get the address of the ipmon enlcave entrypoint
+		unsigned long long ipmon_enclave_entrypoint_ptr = (unsigned long long)ipmon_enclave_entrypoint;
+		//printf("INFO: ipmon_enclave_entrypoint_ptr = %llx\n", ipmon_enclave_entrypoint_ptr);
 
-	uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
-	ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
+		// We add the entrypoint to a mask and shift it back to align on bit 0
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_0_11  = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0x0000000000000FFF;
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_12_23 = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0x0000000000FFF000;
+		ipmon_enclave_entrypoint_ptr_bits_12_23 >>= 12;
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_24_35 = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0x0000000FFF000000;
+		ipmon_enclave_entrypoint_ptr_bits_24_35 >>= 24;
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_36_47 = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0x0000FFF000000000;
+		ipmon_enclave_entrypoint_ptr_bits_36_47 >>= 36;
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_48_59 = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0x0FFF000000000000;
+		ipmon_enclave_entrypoint_ptr_bits_48_59 >>= 48;
+		unsigned long long ipmon_enclave_entrypoint_ptr_bits_60_63 = ((unsigned long long)ipmon_enclave_entrypoint_ptr) & 0xF000000000000000;
+		ipmon_enclave_entrypoint_ptr_bits_60_63 >>= 60;
 
-	uintptr_t ipmon_checked_syscall_instr_ptr = (uintptr_t)ipmon_checked_syscall_instr;
-	ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
+		/*printf("INFO: ipmon_enclave_entrypoint_ptr_bits_0_11 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_0_11);
+		printf("INFO: ipmon_enclave_entrypoint_ptr_bits_12_23 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_12_23);
+		printf("INFO: ipmon_enclave_entrypoint_ptr_bits_24_35 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_24_35);
+		printf("INFO: ipmon_enclave_entrypoint_ptr_bits_36_47 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_36_47);
+		printf("INFO: ipmon_enclave_entrypoint_ptr_bits_48_59 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_48_59);
+		printf("INFO: ipmon_enclave_entrypoint_ptr_bits_60_63 = %llx\n", ipmon_enclave_entrypoint_ptr_bits_60_63);*/
 
-	// Define BPF-filter
+		uintptr_t ipmon_unchecked_syscall_instr_ptr = (uintptr_t)ipmon_unchecked_syscall_instr;
+		ipmon_unchecked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
+
+		uintptr_t ipmon_checked_syscall_instr_ptr = (uintptr_t)ipmon_checked_syscall_instr;
+		ipmon_checked_syscall_instr_ptr += 0x02; // align address with seccomp bpf instruction pointer on x86_64
+
+		// Define BPF-filter
 #include "MVEE_ipmon_seccomp_bpf_policy.h"
 
-	// Set BPF-filter
-	struct sock_fprog prog = {
-		(unsigned short)(sizeof(filter) / sizeof(filter[0])),
-		filter,
-	};
+		// Set BPF-filter
+		struct sock_fprog prog = {
+			(unsigned short)(sizeof(filter) / sizeof(filter[0])),
+			filter,
+		};
 
-	// Enable seccomp BPF-filtering
-	if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
-	{
-		perror("Couldn't enable seccomp-bpf filtering");
+		// Enable seccomp BPF-filtering
+		if (ipmon_checked_syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) == -1)
+		{
+			perror("Couldn't enable seccomp-bpf filtering");
+		}
+		else
+		{
+			int seccomp_bpf_filter_installed = ipmon_checked_syscall(MVEE_SECCOMP_BPF_FILTER_INSTALLED);
+			seccomp_bpf_filter_is_set = true;
+		}
 	}
-	else
-	{
-		seccomp_bpf_filter_is_set = true;
-	}
+	
 }
 
 /*-----------------------------------------------------------------------------

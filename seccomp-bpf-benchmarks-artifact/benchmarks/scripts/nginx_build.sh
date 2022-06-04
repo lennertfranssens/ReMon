@@ -37,8 +37,6 @@ do
       export CC="$__llvm_bin_dir/clang -g -O3"
       export CXX="$__llvm_bin_dir/clang++ -g -O3"
 
-      ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
-
       do_make
 
       shift
@@ -49,72 +47,6 @@ do
 
       export CC="$__llvm_bin_dir/clang $CFLAGS"
       export CXX="$__llvm_bin_dir/clang++ $CFLAGS"
-
-      ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
-
-      do_make
-
-      shift
-      ;;
-
-    --wrapped)
-      if [ ! -e "$__current_dir/non-instrumented.shm" ]
-      then
-        "$__current_dir/../scripts/generate_non_instrumented.sh" \
-            "$__current_dir/../instrumenting/nginx.shm.in"       \
-            "non-instrumented.shm"
-      fi
-
-      __prefix="$__current_dir/../out/nginx/wrapped"
-      export CC="$__llvm_bin_dir/clang $CFLAGS -fshm_support=$__current_dir/non-instrumented.shm"
-      export CXX="$__llvm_bin_dir/clang++ $CFLAGS -fshm_support=$__current_dir/non-instrumented.shm"
-
-      ln -s "$__current_dir/../patches/nginx/b/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
-
-      do_make
-
-      shift
-      ;;
-
-    --base-anon)
-      __prefix="$__current_dir/../out/nginx/base_anon"
-
-      export CC="$__llvm_bin_dir/clang -g -O3"
-      export CXX="$__llvm_bin_dir/clang++ -g -O3"
-
-      ln -s "$__current_dir/../patches/nginx/a/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
-
-      do_make
-
-      shift
-      ;;
-
-    --default-anon)
-      __prefix="$__current_dir/../out/nginx/default_anon"
-
-      export CC="$__llvm_bin_dir/clang $CFLAGS"
-      export CXX="$__llvm_bin_dir/clang++ $CFLAGS"
-
-      ln -s "$__current_dir/../patches/nginx/a/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
-
-      do_make
-
-      shift
-      ;;
-
-    --wrapped-anon)
-      if [ ! -e "$__current_dir/non-instrumented-anon.shm" ]
-      then
-        "$__current_dir/../scripts/generate_non_instrumented.sh" \
-            "$__current_dir/../instrumenting/nginx-anon.shm.in"  \
-            "non-instrumented-anon.shm"
-      fi
-
-      __prefix="$__current_dir/../out/nginx/wrapped_anon"
-      export CC="$__llvm_bin_dir/clang $CFLAGS -fshm_support=$__current_dir/non-instrumented-anon.shm"
-      export CXX="$__llvm_bin_dir/clang++ $CFLAGS -fshm_support=$__current_dir/non-instrumented-anon.shm"
-
-      ln -s "$__current_dir/../patches/nginx/a/src/os/unix/ngx_shmem.c" -f "$__current_dir/src/os/unix/ngx_shmem.c"
 
       do_make
 
